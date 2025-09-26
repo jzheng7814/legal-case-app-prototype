@@ -30,10 +30,7 @@ class LLMBackend:
 class OllamaBackend(LLMBackend):
     def __init__(self, settings: Settings):
         self._settings = settings
-        self._client = httpx.AsyncClient(
-            base_url=settings.ollama_base_url,
-            timeout=settings.ollama_timeout_seconds,
-        )
+        self._client = httpx.AsyncClient(base_url=settings.ollama_base_url, timeout=60.0)
         self._lock = asyncio.Lock()
 
     async def _post_generate(self, payload: Dict[str, Any]) -> Dict[str, Any]:

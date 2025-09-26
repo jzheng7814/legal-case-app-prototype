@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen3:8b"
     llm_temperature: float = 0.2
     llm_max_tokens: int = 1024
-    ollama_timeout_seconds: float = 180.0
     use_mock_llm: bool = False
     document_root: str = "data/documents"
 
