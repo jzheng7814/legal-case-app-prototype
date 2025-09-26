@@ -1,0 +1,61 @@
+IN THE UNITED STATES DISTRICT COURT
+FOR THE NORTHERN DISTRICT OF CALIFORNIA
+
+SARAH JOHNSON,
+                    Plaintiff,
+v.                                    Case No. 3:24-cv-01234-ABC
+
+XYZ CORPORATION,
+                    Defendant.
+
+BREACH OF CONTRACT COMPLAINT
+
+Plaintiff Sarah Johnson, through her counsel, respectfully alleges:
+
+PARTIES
+
+1. Plaintiff Sarah Johnson is a sole proprietor operating a technology consulting business in San Francisco, California.
+
+2. Defendant XYZ Corporation is a Delaware corporation with its principal place of business in Palo Alto, California, engaged in software development and licensing.
+
+FACTUAL ALLEGATIONS
+
+3. On January 10, 2024, the parties entered into a Software Licensing Agreement ("Agreement") whereby Defendant agreed to provide comprehensive software solutions and technical support services to Plaintiff's business operations.
+
+4. The Agreement specifically required Defendant to provide quarterly software updates, 24/7 technical support, and on-site assistance as detailed in Section 4.2 of the contract.
+
+5. Plaintiff paid $75,000 upfront for these services with the reasonable expectation of continuous, reliable support throughout the contract term.
+
+BREACH OF CONTRACT
+
+6. Defendant materially breached the Agreement by:
+   a) Failing to provide the Q1 2024 software update by the agreed deadline of April 1, 2024
+   b) Consistently exceeding the contracted 24-hour response time for technical support
+   c) Refusing to provide promised on-site technical assistance despite multiple formal requests
+   d) Allowing software to become incompatible with industry-standard operating systems
+
+7. These breaches caused substantial harm to Plaintiff's business operations, resulting in lost clients and revenue.
+
+DEFENDANT'S INADEQUATE RESPONSE
+
+8. When confronted about these failures, Defendant offered only excuses including alleged security vulnerabilities, staffing issues, and COVID-related restrictions.
+
+9. While some technical challenges may have been legitimate, Defendant failed to communicate proactively or provide adequate interim solutions as required under the Agreement.
+
+DAMAGES
+
+10. As a direct result of Defendant's material breach, Plaintiff has suffered:
+    - Direct costs of $20,000 in emergency technical solutions
+    - Lost business revenue of $25,000 from client departures
+    - Damage to business reputation and ongoing client relationships
+
+PRAYER FOR RELIEF
+
+WHEREFORE, Plaintiff respectfully requests:
+A. Judgment against Defendant in the amount of $45,000 in actual damages
+B. Pre and post-judgment interest
+C. Costs and reasonable attorney's fees
+D. Such other relief as the Court deems just and proper
+
+Respectfully submitted,
+[Attorney signature block]

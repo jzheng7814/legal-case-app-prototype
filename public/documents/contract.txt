@@ -1,0 +1,70 @@
+SOFTWARE LICENSING AGREEMENT
+
+This Software Licensing Agreement ("Agreement") is entered into as of January 10, 2024 ("Effective Date"), between Sarah Johnson, a sole proprietor doing business as Johnson Tech Consulting ("Licensee"), and XYZ Corporation, a Delaware corporation ("Licensor").
+
+RECITALS
+
+WHEREAS, Licensor has developed proprietary software solutions for business operations management; and
+WHEREAS, Licensee desires to license and use such software for her consulting business operations; and
+WHEREAS, the parties wish to set forth the terms and conditions of such license;
+
+NOW, THEREFORE, in consideration of the mutual covenants contained herein, the parties agree as follows:
+
+1. GRANT OF LICENSE
+1.1 Subject to the terms and conditions of this Agreement, Licensor hereby grants to Licensee a non-exclusive, non-transferable license to use the Software for Licensee's internal business operations.
+1.2 This license includes access to all current software modules, documentation, and related materials.
+
+2. LICENSE FEE
+2.1 In consideration for the rights granted herein, Licensee shall pay Licensor a one-time license fee of Seventy-Five Thousand Dollars ($75,000) ("License Fee").
+2.2 The License Fee was paid in full upon execution of this Agreement.
+
+3. TERM
+This Agreement shall commence on the Effective Date and continue for a period of three (3) years, unless earlier terminated in accordance with the provisions hereof.
+
+4. SUPPORT AND MAINTENANCE
+
+4.1 Technical Support Standards
+Licensor shall provide technical support services with the following performance standards:
+(a) Response time for all support requests shall not exceed twenty-four (24) hours
+(b) Resolution of critical issues within seventy-two (72) hours of initial contact
+(c) Availability of support personnel during business hours (8 AM - 6 PM PST, Monday-Friday)
+
+4.2 SOFTWARE UPDATES AND ENHANCEMENTS
+Licensor agrees to provide:
+(a) Regular software updates on a quarterly basis to ensure optimal performance
+(b) Compatibility updates for new operating systems within thirty (30) days of OS release
+(c) Security patches and bug fixes as needed
+(d) Access to new features and enhancements developed during the license term
+
+4.3 ON-SITE SUPPORT
+Upon reasonable request, Licensor shall provide on-site technical assistance within forty-eight (48) hours. On-site support includes:
+(a) Installation and configuration assistance
+(b) Training for Licensee's personnel
+(c) Troubleshooting of complex technical issues
+(d) System optimization and performance tuning
+
+5. PERFORMANCE STANDARDS
+5.1 All software updates must maintain compatibility with current industry standards
+5.2 System uptime shall be maintained at ninety-nine percent (99%) or higher
+5.3 All modifications must preserve data integrity and system security
+5.4 Documentation shall be provided for all updates and changes
+
+6. BREACH AND REMEDIES
+6.1 Material Breach: Any failure to meet the service levels specified in Section 4 shall constitute a material breach of this Agreement.
+6.2 Notice and Cure: The non-breaching party shall provide written notice of breach, and the breaching party shall have thirty (30) days to cure.
+6.3 Remedies: Upon uncured material breach, the non-breaching party may seek damages, specific performance, or terminate this Agreement.
+
+7. LIMITATION OF LIABILITY
+EXCEPT FOR BREACHES OF SECTION 4 (SUPPORT AND MAINTENANCE), IN NO EVENT SHALL EITHER PARTY BE LIABLE FOR CONSEQUENTIAL, INCIDENTAL, OR PUNITIVE DAMAGES.
+
+8. GOVERNING LAW
+This Agreement shall be governed by and construed in accordance with the laws of the State of California.
+
+IN WITNESS WHEREOF, the parties have executed this Agreement as of the date first written above.
+
+SARAH JOHNSON                    XYZ CORPORATION
+
+_____________________           By: _____________________
+Sarah Johnson                   Name: Michael Chen
+Date: January 10, 2024          Title: Chief Technology Officer
+                               Date: January 10, 2024
