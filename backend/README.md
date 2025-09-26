@@ -14,6 +14,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ## Environment Variables (`.env`)
 - `LEGAL_CASE_OLLAMA_BASE_URL` – URL for the local Ollama server (defaults to `http://127.0.0.1:11434`)
 - `LEGAL_CASE_OLLAMA_MODEL` – Model tag (e.g. `qwen3:8b`)
+- `LEGAL_CASE_OLLAMA_TIMEOUT_SECONDS` – Request timeout applied to Ollama API calls (defaults to `30`)
 - `LEGAL_CASE_USE_MOCK_LLM` – Set to `true` to use deterministic mock responses
 
 ## Primary Endpoints
