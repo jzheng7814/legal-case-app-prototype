@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     llm_provider: str = "ollama"
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3:8b"
+    ollama_timeout_seconds: float = 30.0
     llm_temperature: float = 0.2
     llm_max_tokens: int = 1024
     use_mock_llm: bool = False
