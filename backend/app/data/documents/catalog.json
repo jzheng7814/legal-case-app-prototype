@@ -1,0 +1,30 @@
+{
+  "cases": {
+    "demo-case": {
+      "title": "Johnson v. XYZ Corporation",
+      "documents": [
+        {
+          "id": "main-case",
+          "name": "Johnson v. XYZ Corporation",
+          "type": "Case File",
+          "filename": "main-case.txt",
+          "description": "Primary case narrative submitted by plaintiff"
+        },
+        {
+          "id": "contract",
+          "name": "Software Licensing Agreement",
+          "type": "Contract",
+          "filename": "contract.txt",
+          "description": "Executed licensing agreement between parties"
+        },
+        {
+          "id": "correspondence",
+          "name": "Email Correspondence",
+          "type": "Communications",
+          "filename": "correspondence.txt",
+          "description": "Key email exchange related to dispute"
+        }
+      ]
+    }
+  }
+}

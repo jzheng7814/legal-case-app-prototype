@@ -1,112 +1,73 @@
-# Legal Case Summary Editor
+# Legal Case Summary Workspace
 
-A specialized AI-powered tool designed for lawyers to create, edit, and refine legal case summaries with intelligent assistance. Think "Cursor/Copilot for Legal Writing": combining the power of AI suggestions with the precision needs of legal documentation.
+This repository now houses the full stack for the Legal Case Summary Editor: a React workspace for attorneys on the frontend and a FastAPI service that orchestrates document retrieval, summary generation, structured AI suggestions, and context-aware chat.
 
-## Overview
+## Repository Layout
+- `frontend/` – Vite + React app that powers the authoring workspace
+- `backend/` – FastAPI application that calls the local Ollama-hosted Qwen model and exposes REST endpoints
+- `backend/app/data/` – Demo catalog and source documents used until Clearinghouse integration lands
 
-The Legal Case Summary Editor provides lawyers with an intelligent writing environment that offers continuous AI suggestions, contextual document access, and conversational AI assistance throughout the case summary creation process.
+## Backend Highlights
+- `POST /cases/{case_id}/summary` kicks off an async job that composes summaries using the configured Qwen model (or a deterministic mock if needed)
+- `POST /cases/{case_id}/suggestions` returns non-overlapping edit suggestions in a frontend-friendly format
+- `POST /chat/session/{id}/message` streams chat turns while keeping context (summary, documents, highlights) consistent
+- `GET /cases/{case_id}/documents` serves reference documents from the catalog, standing in for the future Clearinghouse fetch
 
-## Key Features
+## Frontend Updates
+- The workspace now speaks to the backend via `src/services/apiClient.js`
+- Summary generation triggers backend jobs and polls until completion, then automatically refreshes AI suggestions
+- Chat routing creates real server-side sessions and relays highlight/suggestion context in each turn
+- Document loading defaults to the backend and gracefully falls back to the bundled public assets when offline
 
-### Continuous AI Suggestions
-- **Google Docs-style suggestions**: AI provides inline suggestions similar to Google Docs comments or Grammarly
-- **Context-aware recommendations**: Suggestions are tailored for legal writing precision and accuracy
-- **Hover-to-preview**: Detailed suggestion previews with explanations
-- **One-click acceptance**: Seamlessly accept or reject suggestions
+## Prerequisites
+| Component | Requirement |
+|-----------|-------------|
+| Backend   | Python 3.11+, pip/venv, [Ollama](https://ollama.com) with Qwen (`ollama pull qwen3:8b`) |
+| Frontend  | Node.js 18+, npm |
+| Shared    | macOS/Linux shell tools, two terminal panes (one per service) |
 
-### Dual-Mode Editing
-- **Comment Mode**: View and interact with AI suggestions while reading/reviewing
-- **Edit Mode**: Clean text editing without distractions, with fresh suggestions generated after each edit session
-
-### Conversational AI Assistant
-- **Context-aware chat**: Discuss suggestions, ask questions about legal language, or seek clarification
-- **Text selection integration**: Select any text in your summary and add it to the conversation context with Tab key
-- **Suggestion discussions**: Start focused conversations about specific AI recommendations
-
-### Integrated Document Access
-- **Side-by-side document viewing**: Access all case-related documents while writing
-- **Multi-document support**: Switch between contracts, correspondence, case files, and other supporting documents
-- **Reference integration**: Easy access to source materials for accurate summary creation
-
-## Target Users
-
-- **Practicing Lawyers**: Streamline case summary creation and improve writing quality
-- **Legal Assistants**: Enhance document preparation with AI-powered suggestions
-- **Law Students**: Learn proper legal writing conventions with intelligent feedback
-- **Legal Writers**: Improve clarity and precision in legal documentation
-
-## How It Works
-
-### 1. Document Upload
-- Upload case files (PDF, DOC, DOCX, TXT) or enter a ClearingHouse case ID
-- System processes and organizes all related documents
-
-### 2. AI-Generated Initial Summary
-- Click "Generate with AI" to create an initial case summary from uploaded documents
-- AI analyzes all case materials to produce a comprehensive first draft
-
-### 3. Intelligent Editing Process
-- **Comment Mode**: Review AI suggestions highlighted throughout your text
-  - Hover over suggestions for detailed explanations
-  - Accept, reject, or discuss suggestions with AI
-  - Add text selections to chat context for deeper discussions
-- **Edit Mode**: Make direct text changes without suggestion distractions
-  - Fresh AI analysis and suggestions generated after each edit session
-
-### 4. Conversational Refinement
-- Use the AI chat assistant to:
-  - Discuss specific suggestions or edits
-  - Ask questions about legal terminology or phrasing
-  - Seek advice on structure or content organization
-  - Get explanations for recommended changes
-
-## Technology Stack
-
-- **Frontend**: React + Vite + Tailwind CSS
-- **AI Integration**: Ready for backend API integration
-- **Document Processing**: Supports multiple file formats
-- **Real-time Collaboration**: Built for responsive, interactive editing
-
-## Getting Started
-
-### Prerequisites
-- Node.js 16+ 
-- Modern web browser
-
-### Installation
+## Backend Setup
 ```bash
-# Clone the repository
-git clone [repository-url]
+cd backend
+python -m venv .venv
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env                 # review and adjust if needed
+```
+Key environment variables (all prefixed with `LEGAL_CASE_`):
+- `OLLAMA_BASE_URL` and `OLLAMA_MODEL` point at your local Ollama instance and model tag
+- `USE_MOCK_LLM=true` forces deterministic mock responses when the model is not available
 
-# Install dependencies
+Start the API server:
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+The OpenAPI docs are available at `http://localhost:8000/docs`.
+
+## Frontend Setup
+```bash
+cd frontend
 npm install
-
-# Start development server
 npm run dev
 ```
+By default the client calls `http://localhost:8000`. Override this by setting `VITE_BACKEND_URL` in `frontend/.env` if needed.
 
-### Setup
-1. Place test documents in `/public/documents/` directory
-2. Required files: `main-case.txt`, `contract.txt`, `correspondence.txt`
-3. Launch application and upload documents or enter case ID
+## Daily Workflow
+1. Launch the backend API (see above)
+2. In another terminal, run `npm run dev` inside `frontend/`
+3. Visit `http://localhost:5173`
+4. Press “Generate with AI” – the UI will poll the summary job, render the text, pull suggestions, and surface them inline
+5. Use the “Refresh Suggestions” button to re-sync edits after manual changes or new instructions
+6. Open the chat panel to message the AI; selections or suggestions added via the Tab shortcut will be embedded in the request payload automatically
 
-## Roadmap
+## Configuration Notes
+- Demo data lives in `backend/app/data/documents`; swap these files or extend `catalog.json` to emulate other cases
+- The backend caches summary jobs in-memory only; restart the server to clear state (persistent storage will plug in later)
+- To shorten feedback loops during UI work, set `LEGAL_CASE_USE_MOCK_LLM=true` while the backend server is running
 
-- [ ] Backend API integration for real AI suggestions
-- [ ] Advanced legal writing analysis
-- [ ] Multi-user collaboration features
-- [ ] Integration with legal databases
-- [ ] Custom AI training for specific legal domains
-- [ ] Export to various legal document formats
+## Next Steps
+- Replace the document catalog loader with the actual Clearinghouse client once credentials are available
+- Persist chat and summary artifacts when the database tier is introduced
+- Add automated tests that exercise the FastAPI routes and the React stores once the workflow stabilises
 
-## Contributing
-
-This project is in active development. Please refer to the implementation context document for technical details and development guidelines.
-
-## License
-
-[License information to be added]
-
----
-
-*Empowering legal professionals with AI-assisted writing that understands the precision and nuance required in legal documentation.*
+Happy lawyering! EOF
