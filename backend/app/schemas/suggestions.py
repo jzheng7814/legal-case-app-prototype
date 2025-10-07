@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 
 from .documents import DocumentReference
 
@@ -16,15 +16,13 @@ class SuggestionType(str, Enum):
 
 class TextRange(BaseModel):
     start: int = Field(..., ge=0)
-    end: int = Field(..., ge=0)
+    end: int   = Field(..., ge=0)
 
-    @field_validator("end")
-    @classmethod
-    def validate_range(cls, end: int, values: dict[str, int]) -> int:
-        start = values.get("start", 0)
-        if end < start:
+    @model_validator(mode='after')
+    def check_range(self):
+        if self.end < self.start:
             raise ValueError("end must be greater than or equal to start")
-        return end
+        return self
 
 
 class Suggestion(BaseModel):

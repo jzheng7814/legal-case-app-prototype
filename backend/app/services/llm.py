@@ -5,13 +5,13 @@ import json
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
+import re
 
 import httpx
 
 from app.core.config import get_settings, Settings
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class LLMResult:
@@ -55,6 +55,7 @@ class OllamaBackend(LLMBackend):
             payload["system"] = system
         raw_response = await self._post_generate(payload)
         text = raw_response.get("response", "").strip()
+        text = re.sub(r"<think>.*?</think>\n?", "", text, flags=re.DOTALL)
         return LLMResult(text=text, raw=raw_response)
 
     async def generate_json(self, prompt: str, *, schema_hint: str, **kwargs: Any) -> Dict[str, Any]:
@@ -66,7 +67,8 @@ class OllamaBackend(LLMBackend):
         )
         result = await self.generate(json_prompt, **kwargs)
         try:
-            return json.loads(result.text)
+            text = re.sub(r"<think>.*?</think>\n?", "", result.text, flags=re.DOTALL)
+            return json.loads(text)
         except json.JSONDecodeError as exc:
             logger.warning("Failed to decode JSON response: %s", exc)
             raise

@@ -3,7 +3,7 @@ import { fetchSuggestions, getSummaryJob, startSummaryJob } from '../../../servi
 import { DEFAULT_CASE_ID } from '../../../services/documentService';
 
 const POLL_INTERVAL_MS = 1500;
-const POLL_TIMEOUT_MS = 60000;
+const POLL_TIMEOUT_MS = 600000;
 
 const buildDocumentPayload = (documents = []) =>
     documents.map((doc) => ({

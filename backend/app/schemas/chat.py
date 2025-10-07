@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from .documents import DocumentReference
 
@@ -51,3 +51,5 @@ class ChatMessageRequest(BaseModel):
 class ChatMessageResponse(BaseModel):
     session_id: str = Field(..., alias="sessionId")
     messages: List[ChatMessage]
+
+    model_config = ConfigDict(populate_by_name=True)

@@ -13,33 +13,41 @@ logger = logging.getLogger(__name__)
 
 _SUGGESTION_JSON_SCHEMA = json.dumps(
     {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "SuggestionResponse",
         "type": "object",
         "required": ["suggestions"],
         "properties": {
             "suggestions": {
                 "type": "array",
                 "items": {
+                    "title": "Suggestion",
                     "type": "object",
                     "required": ["id", "type", "comment"],
                     "properties": {
                         "id": {"type": "string"},
-                        "type": {"type": "string"},
+                        "type": {
+                            "type": "string",
+                            "enum": ["edit", "addition", "deletion"]
+                        },
                         "comment": {"type": "string"},
                         "sourceDocument": {"type": "string"},
                         "originalText": {"type": "string"},
                         "suggestedText": {"type": "string"},
                         "text": {"type": "string"},
                         "position": {
+                            "title": "TextRange",
                             "type": "object",
+                            "required": ["start", "end"],
                             "properties": {
                                 "start": {"type": "integer", "minimum": 0},
-                                "end": {"type": "integer", "minimum": 0},
-                            },
-                        },
-                    },
-                },
+                                "end": {"type": "integer", "minimum": 0}
+                            }
+                        }
+                    }
+                }
             }
-        },
+        }
     }
 )
 
@@ -62,27 +70,39 @@ async def generate_suggestions(case_id: str, request: SuggestionRequest) -> Sugg
     suggestions_payload = raw.get("suggestions", [])
     suggestions = [Suggestion.model_validate(item) for item in suggestions_payload]
     validation = validate_suggestions(suggestions)
-    if not validation.valid:
-        raise HTTPException(status_code=400, detail={"errors": validation.errors})
+    if validation.errors:
+        logger.warning("Discarded %d overlapping suggestions", len(validation.errors))
 
-    limited = suggestions[: request.max_suggestions]
+    limited = validation.suggestions[: request.max_suggestions]
     return SuggestionResponse(suggestions=limited)
 
 
 def validate_suggestions(suggestions: List[Suggestion]) -> SuggestionValidationResult:
     errors: List[str] = []
     spans = []
-    for suggestion in suggestions:
+    for index, suggestion in enumerate(suggestions):
         if suggestion.position:
-            spans.append((suggestion.position.start, suggestion.position.end, suggestion.id))
+            spans.append((suggestion.position.start, suggestion.position.end, index))
 
-    spans.sort(key=lambda item: item[0])
-    for index in range(1, len(spans)):
-        prev_start, prev_end, prev_id = spans[index - 1]
-        current_start, current_end, current_id = spans[index]
-        if current_start < prev_end:
+    spans.sort(key=lambda item: (item[0], item[2]))
+    keep_indices = set(range(len(suggestions)))
+    active_span = None
+
+    for start, end, index in spans:
+        if active_span is None:
+            active_span = (start, end, index)
+            continue
+
+        active_start, active_end, active_index = active_span
+        if start < active_end:
+            keep_indices.discard(index)
             errors.append(
-                f"Suggestions '{prev_id}' and '{current_id}' overlap at characters {current_start}-{prev_end}."
+                f"Discarded suggestion '{suggestions[index].id}' due to overlap with '{suggestions[active_index].id}'."
             )
+            continue
 
-    return SuggestionValidationResult(valid=len(errors) == 0, suggestions=suggestions, errors=errors)
+        active_span = (start, end, index)
+
+    filtered = [suggestion for idx, suggestion in enumerate(suggestions) if idx in keep_indices]
+
+    return SuggestionValidationResult(valid=True, suggestions=filtered, errors=errors)

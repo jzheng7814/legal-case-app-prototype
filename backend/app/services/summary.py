@@ -45,15 +45,15 @@ async def _run_summary_job(job_id: str, case_id: str, request: SummaryRequest) -
 
         instruction_block = request.instructions or (
             "Produce a concise case summary highlighting parties, claims, procedural posture,"
-            " key evidence, and damages."
+            " key evidence, and damages. Do not use headers, bullet points, or lists. Write"
+            " as if you were composing a short magazine article."
         )
 
         prompt = textwrap.dedent(
             f"""
             You are drafting a precise legal case summary for an attorney.\n
             Context documents:\n{merged_corpus}\n
-            Instructions: {instruction_block}\n
-            Provide a structured summary with sections for Parties, Claims, Evidence, Procedural History, and Damages.\n            """
+            Instructions: {instruction_block}\n"""
         )
 
         summary_text = await llm_service.generate_text(prompt)
