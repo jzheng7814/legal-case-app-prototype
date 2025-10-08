@@ -15,7 +15,10 @@ const buildDocumentPayload = (documents = []) =>
 const normaliseSuggestions = (suggestions = []) =>
     suggestions.map((suggestion) => ({
         ...suggestion,
-        type: suggestion.type || 'edit'
+        type: suggestion.type || 'edit',
+        originalText: suggestion.originalText ?? suggestion.original_text ?? '',
+        text: suggestion.text ?? '',
+        sourceDocument: suggestion.sourceDocument ?? suggestion.source_document ?? null
     }));
 
 const useSummaryStore = () => {
@@ -28,6 +31,8 @@ const useSummaryStore = () => {
     const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
     const [suggestionsError, setSuggestionsError] = useState(null);
     const summaryRef = useRef(null);
+    const [documentChecklists, setDocumentChecklists] = useState({});
+    const [summaryChecklists, setSummaryChecklists] = useState({});
 
     const toggleEditMode = useCallback(() => {
         setIsEditMode((previous) => !previous);
@@ -57,6 +62,8 @@ const useSummaryStore = () => {
         setIsGeneratingSummary(true);
         setLastSummaryError(null);
         setSuggestions([]);
+        setDocumentChecklists({});
+        setSummaryChecklists({});
 
         try {
             const requestBody = {
@@ -86,6 +93,8 @@ const useSummaryStore = () => {
         { caseId = DEFAULT_CASE_ID, documents = [], maxSuggestions = 6 } = {}
     ) => {
         if (!summaryText.trim()) {
+            setDocumentChecklists({});
+            setSummaryChecklists({});
             return [];
         }
         setIsLoadingSuggestions(true);
@@ -97,6 +106,10 @@ const useSummaryStore = () => {
                 maxSuggestions
             });
             const normalised = normaliseSuggestions(response.suggestions);
+            const documentChecklistPayload = response.documentChecklists ?? response.document_checklists ?? {};
+            const summaryChecklistPayload = response.summaryChecklists ?? response.summary_checklists ?? {};
+            setDocumentChecklists(documentChecklistPayload);
+            setSummaryChecklists(summaryChecklistPayload);
             setSuggestions(normalised);
             return normalised;
         } catch (error) {
@@ -122,7 +135,9 @@ const useSummaryStore = () => {
         refreshSuggestions,
         isLoadingSuggestions,
         suggestionsError,
-        summaryRef
+        summaryRef,
+        documentChecklists,
+        summaryChecklists
     }), [
         generateAISummary,
         isEditMode,
@@ -134,7 +149,9 @@ const useSummaryStore = () => {
         summaryJobId,
         summaryText,
         toggleEditMode,
-        isLoadingSuggestions
+        isLoadingSuggestions,
+        documentChecklists,
+        summaryChecklists
     ]);
 
     return value;

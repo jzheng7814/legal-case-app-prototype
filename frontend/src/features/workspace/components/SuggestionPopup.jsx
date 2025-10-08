@@ -45,7 +45,7 @@ const SuggestionPopup = () => {
                     {activeSuggestion.originalText}
                 </div>
                 <div className="text-green-600">
-                    → {activeSuggestion.suggestedText}
+                    → {activeSuggestion.text}
                 </div>
             </div>
 

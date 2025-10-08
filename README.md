@@ -3,7 +3,7 @@
 This repository now houses the full stack for the Legal Case Summary Editor: a React workspace for attorneys on the frontend and a FastAPI service that orchestrates document retrieval, summary generation, structured AI suggestions, and context-aware chat.
 
 ## Repository Layout
-- `frontend/` – Vite + React app that powers the authoring workspace
+- `frontend/` – Legal Case Summarization Tool app that powers the authoring workspace
 - `backend/` – FastAPI application that calls the local Ollama-hosted Qwen model and exposes REST endpoints
 - `backend/app/data/` – Demo catalog and source documents used until Clearinghouse integration lands
 

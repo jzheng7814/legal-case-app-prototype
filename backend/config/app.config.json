@@ -7,7 +7,8 @@
     },
     "openai": {
       "response_model": "gpt-5-nano",
-      "conversation_model": "gpt-5-nano"
+      "conversation_model": "gpt-5-nano",
+      "reasoning_effort": "low"
     },
     "ollama": {
       "base_url": "http://127.0.0.1:11434",

@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Edit3, Sparkles } from 'lucide-react';
-import { useSummary, useHighlight, useDocuments } from '../state/WorkspaceProvider';
+import { useSummary, useHighlight, useDocuments, useChat } from '../state/WorkspaceProvider';
+import ChecklistPanel from './ChecklistPanel';
 
 const SummaryPanel = () => {
     const {
@@ -13,7 +14,9 @@ const SummaryPanel = () => {
         refreshSuggestions,
         isLoadingSuggestions,
         summaryRef,
-        suggestionsError
+        suggestionsError,
+        documentChecklists,
+        summaryChecklists
     } = useSummary();
     const documents = useDocuments();
     const {
@@ -25,6 +28,7 @@ const SummaryPanel = () => {
         selectedText,
         selectedDocumentText
     } = useHighlight();
+    const { addChecklistContext } = useChat();
     const [localError, setLocalError] = useState(null);
 
     const canGenerateSummary = !isEditMode;
@@ -51,6 +55,10 @@ const SummaryPanel = () => {
             setLocalError(error.message || 'Failed to refresh suggestions.');
         }
     }, [contextDocuments, refreshSuggestions]);
+
+    const handleAddChecklistToChat = useCallback(({ itemName, value, evidence, source }) => {
+        addChecklistContext({ itemName, value, evidence, source });
+    }, [addChecklistContext]);
 
     return (
         <div className="w-2/5 border-r bg-white flex flex-col overflow-hidden">
@@ -101,39 +109,46 @@ const SummaryPanel = () => {
                 )}
             </div>
 
-            <div className="flex-1 p-4 flex flex-col min-h-0">
-                <div className="relative flex-1 min-h-0">
-                    {isEditMode ? (
-                        <textarea
-                            ref={summaryRef}
-                            value={summaryText}
-                            onChange={(event) => setSummaryText(event.target.value)}
-                            placeholder="Write your case summary here..."
-                            className="w-full h-full min-h-0 resize-none border border-gray-300 rounded-md px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 overflow-auto"
-                        />
-                    ) : (
-                        <div
-                            ref={summaryRef}
-                            className="relative h-full w-full border border-gray-300 rounded-md px-3 py-2 text-sm leading-relaxed cursor-text overflow-y-auto whitespace-pre-wrap"
-                        >
-                            {summaryText ? renderSummaryWithSuggestions(summaryText) : (
-                                <span className="text-gray-500">Your summary will appear here...</span>
-                            )}
-                            {activeHighlight?.useOverlay && activeHighlight.type === 'summary' && highlightRects.map((rect, index) => (
-                                <span
-                                    key={`summary-highlight-${index}`}
-                                    className="pointer-events-none absolute z-10 rounded-sm bg-yellow-200/70"
-                                    style={{
-                                        top: rect.top,
-                                        left: rect.left,
-                                        width: rect.width,
-                                        height: rect.height
-                                    }}
-                                />
-                            ))}
-                        </div>
-                    )}
+            <div className="flex-1 flex flex-col min-h-0">
+                <div className="flex-1 p-4 flex flex-col min-h-0">
+                    <div className="relative flex-1 min-h-0">
+                        {isEditMode ? (
+                            <textarea
+                                ref={summaryRef}
+                                value={summaryText}
+                                onChange={(event) => setSummaryText(event.target.value)}
+                                placeholder="Write your case summary here..."
+                                className="w-full h-full min-h-0 resize-none border border-gray-300 rounded-md px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 overflow-auto"
+                            />
+                        ) : (
+                            <div
+                                ref={summaryRef}
+                                className="relative h-full w-full border border-gray-300 rounded-md px-3 py-2 text-sm leading-relaxed cursor-text overflow-y-auto whitespace-pre-wrap"
+                            >
+                                {summaryText ? renderSummaryWithSuggestions(summaryText) : (
+                                    <span className="text-gray-500">Your summary will appear here...</span>
+                                )}
+                                {activeHighlight?.useOverlay && activeHighlight.type === 'summary' && highlightRects.map((rect, index) => (
+                                    <span
+                                        key={`summary-highlight-${index}`}
+                                        className="pointer-events-none absolute z-10 rounded-sm bg-yellow-200/70"
+                                        style={{
+                                            top: rect.top,
+                                            left: rect.left,
+                                            width: rect.width,
+                                            height: rect.height
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
+                <ChecklistPanel
+                    summaryChecklists={summaryChecklists}
+                    documentChecklists={documentChecklists}
+                    onAddChecklist={handleAddChecklistToChat}
+                />
             </div>
 
             {showTabTooltip && (selectedText || selectedDocumentText) && (
@@ -145,7 +160,7 @@ const SummaryPanel = () => {
                         transform: 'translateX(-50%)'
                     }}
                 >
-                    [Tab] Add to Chat
+                    [Tab] +
                 </div>
             )}
         </div>

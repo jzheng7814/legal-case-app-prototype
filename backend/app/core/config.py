@@ -18,6 +18,7 @@ class ModelDefaults(BaseModel):
 class OpenAIModelConfig(BaseModel):
     response_model: str
     conversation_model: Optional[str] = None
+    reasoning_effort: str
     api_key: Optional[str] = None
 
     def conversation_model_name(self) -> str:
@@ -52,6 +53,7 @@ class Settings(BaseSettings):
     document_root: str = "data/documents"
     config_path: str = "config/app.config.json"
     openai_api_key: Optional[str] = None
+    clearinghouse_api_key: Optional[str] = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", env_prefix="LEGAL_CASE_")
 

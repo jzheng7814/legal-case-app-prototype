@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import List
@@ -7,6 +8,7 @@ from typing import List
 from fastapi import HTTPException
 
 from app.schemas.suggestions import Suggestion, SuggestionRequest, SuggestionResponse, SuggestionValidationResult
+from app.services.checklists import extract_document_checklists, extract_summary_checklists, get_checklist_definitions
 from app.services.llm import llm_service
 
 logger = logging.getLogger(__name__)
@@ -33,7 +35,6 @@ _SUGGESTION_JSON_SCHEMA = json.dumps(
                         "comment": {"type": "string"},
                         "sourceDocument": {"type": "string"},
                         "originalText": {"type": "string"},
-                        "suggestedText": {"type": "string"},
                         "text": {"type": "string"},
                         "position": {
                             "title": "TextRange",
@@ -42,24 +43,48 @@ _SUGGESTION_JSON_SCHEMA = json.dumps(
                             "properties": {
                                 "start": {"type": "integer", "minimum": 0},
                                 "end": {"type": "integer", "minimum": 0}
-                            }
+                            },
+                            "additionalProperties": False
                         }
-                    }
+                    },
+                    "additionalProperties": False
                 }
             }
-        }
+        },
+        "additionalProperties": False
     }
 )
 
 
 async def generate_suggestions(case_id: str, request: SuggestionRequest) -> SuggestionResponse:
-    documents_desc = ", ".join(doc.id for doc in request.documents)
+    documents_desc = ", ".join(doc.id for doc in request.documents) or "none supplied"
+    try:
+        # Extract checklist information in parallel so we only call the expensive workflow when needed.
+        document_checklists, summary_checklists = await asyncio.gather(
+            extract_document_checklists(case_id, request.documents),
+            extract_summary_checklists(request.summary_text),
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.exception("Checklist extraction failed")
+        raise HTTPException(status_code=500, detail=f"Failed to extract checklist items: {exc}") from exc
+
+    definitions_json = json.dumps(get_checklist_definitions(), indent=2)
+    document_checklists_json = json.dumps(document_checklists, indent=2)
+    summary_checklists_json = json.dumps(summary_checklists, indent=2)
+
     prompt = (
-        "You are an expert legal copy editor. Based on the summary and supporting documents, "
-        "propose high-impact edits. Each suggestion must target a unique, non-overlapping span of text."
-        "Do NOT reason, plan, or think step-by-step, except to check that your output matches the required schema exactly, down to the field names and types.\n\n"
-        f"Summary:\n{request.summary_text}\n\n"
-        f"Documents referenced: {documents_desc}."
+        "You are an expert legal copy editor. Use the checklist extracted from the source documents as the ground"
+        " truth for what the summary must cover. Compare it to the checklist extracted from the current summary to"
+        " spot missing content, inaccuracies, and opportunities to improve precision. Recommend high-impact edits to"
+        " the summary that address those issues. For each suggestion comment, explicitly mention the checklist gap or"
+        " discrepancy it resolves. Each suggestion must target a unique, non-overlapping span of text."
+        " Do NOT reason, plan, or think step-by-step, except to verify your JSON matches the required schema exactly,"
+        " down to field names and types.\n\n"
+        f"Documents referenced: {documents_desc}.\n\n"
+        f"Checklist definitions:\n{definitions_json}\n\n"
+        f"Checklist derived from source documents:\n{document_checklists_json}\n\n"
+        f"Checklist derived from current summary:\n{summary_checklists_json}\n\n"
+        f"Current summary text:\n{request.summary_text}\n"
     )
 
     try:
@@ -75,7 +100,13 @@ async def generate_suggestions(case_id: str, request: SuggestionRequest) -> Sugg
         logger.warning("Discarded %d overlapping suggestions", len(validation.errors))
 
     limited = validation.suggestions[: request.max_suggestions]
-    return SuggestionResponse(suggestions=limited)
+    serialized_suggestions = [suggestion.model_dump(by_alias=True) for suggestion in limited]
+    response_payload = {
+        "suggestions": serialized_suggestions,
+        "documentChecklists": document_checklists,
+        "summaryChecklists": summary_checklists,
+    }
+    return response_payload
 
 
 def validate_suggestions(suggestions: List[Suggestion]) -> SuggestionValidationResult:

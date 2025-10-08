@@ -361,7 +361,7 @@ const useHighlightStore = ({ summary, documents }) => {
             return;
         }
         if (suggestion.type === 'edit') {
-            summary.setSummaryText((prev) => prev.replace(suggestion.originalText, suggestion.suggestedText));
+            summary.setSummaryText((prev) => prev.replace(suggestion.originalText, suggestion.text));
         }
         setHoveredSuggestion(null);
         chatHelpersRef.current.removeSuggestionContext(suggestion.id);

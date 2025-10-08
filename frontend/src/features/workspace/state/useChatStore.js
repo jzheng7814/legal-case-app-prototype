@@ -85,6 +85,47 @@ const useChatStore = ({ summary, documents, highlight }) => {
         setChatContext((previous) => [...previous, entry]);
     }, []);
 
+    const addChecklistContext = useCallback(({ itemName, value, source, evidence }) => {
+        const trimmedValue = value?.trim();
+        if (!trimmedValue) {
+            return;
+        }
+
+        const label = (itemName || 'Checklist Item').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+        const evidenceLines = (evidence || [])
+            .filter((entry) => entry?.text)
+            .map((entry) => {
+                const docLabel = entry.source_document || entry.sourceDocument || 'Document';
+                const locationLabel = entry.location ? ` (${entry.location})` : '';
+                return `${docLabel}${locationLabel}: ${entry.text}`;
+            });
+
+        const payloadLines = [`${label}: ${trimmedValue}`];
+        if (evidenceLines.length) {
+            payloadLines.push('Evidence:');
+            evidenceLines.forEach((line) => payloadLines.push(`- ${line}`));
+        }
+        if (source) {
+            payloadLines.push(`Origin: ${source}`);
+        }
+
+        const content = payloadLines.join('\n');
+        setChatContext((previous) => {
+            if (previous.some((entry) => entry.type === 'checklist' && entry.content === content)) {
+                return previous;
+            }
+            return [
+                ...previous,
+                {
+                    type: 'checklist',
+                    content,
+                    checklistItem: itemName,
+                    source
+                }
+            ];
+        });
+    }, [setChatContext]);
+
     const removeContextItem = useCallback((index) => {
         setChatContext((previous) => previous.filter((_, idx) => idx !== index));
     }, []);
@@ -192,6 +233,7 @@ const useChatStore = ({ summary, documents, highlight }) => {
         deleteCurrentChat,
         selectChat,
         removeContextItem,
+        addChecklistContext,
         isSending
     }), [
         allChats,
@@ -205,6 +247,7 @@ const useChatStore = ({ summary, documents, highlight }) => {
         removeContextItem,
         selectChat,
         sendChatMessage,
+        addChecklistContext,
         isSending
     ]);
 
