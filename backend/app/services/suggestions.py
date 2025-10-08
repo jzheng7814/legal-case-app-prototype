@@ -56,7 +56,8 @@ async def generate_suggestions(case_id: str, request: SuggestionRequest) -> Sugg
     documents_desc = ", ".join(doc.id for doc in request.documents)
     prompt = (
         "You are an expert legal copy editor. Based on the summary and supporting documents, "
-        "propose high-impact edits. Each suggestion must target a unique, non-overlapping span of text.\n\n"
+        "propose high-impact edits. Each suggestion must target a unique, non-overlapping span of text."
+        "Do NOT reason, plan, or think step-by-step, except to check that your output matches the required schema exactly, down to the field names and types.\n\n"
         f"Summary:\n{request.summary_text}\n\n"
         f"Documents referenced: {documents_desc}."
     )

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import textwrap
 import uuid
 from datetime import datetime
 from typing import Dict, List
@@ -16,10 +15,16 @@ from app.schemas.chat import (
     ChatSession,
     ChatContextItem,
 )
-from app.services.llm import llm_service
+from app.services.llm import LLMMessage, llm_service
 
 _chat_sessions: Dict[str, ChatSession] = {}
 _chat_lock = asyncio.Lock()
+
+_SYSTEM_PROMPT = (
+    "You are an expert legal writing assistant providing precise and concise guidance. "
+    "Ground every response in the supplied summary, documents, highlights, and prior suggestions. "
+    "Cite document ids when relevant and keep answers direct."
+)
 
 
 async def create_session() -> ChatSession:
@@ -50,8 +55,18 @@ async def post_message(session_id: str, payload: ChatMessageRequest) -> ChatMess
     context = payload.context or []
     updated_context = session.context + context
 
-    prompt = _build_prompt(session, user_message, payload, updated_context)
-    response_text = await llm_service.generate_text(prompt)
+    llm_messages = [
+        LLMMessage(role=message.role.value, content=message.content)
+        for message in session.messages[-12:]
+    ]
+    llm_messages.append(
+        LLMMessage(
+            role="user",
+            content=_compose_user_content(user_message.content, payload, updated_context),
+        )
+    )
+
+    response_text = await llm_service.chat(llm_messages, system=_SYSTEM_PROMPT)
 
     assistant_message = ChatMessage(id=str(uuid.uuid4()), role=ChatMessageRole.assistant, content=response_text.strip())
 
@@ -64,17 +79,9 @@ async def post_message(session_id: str, payload: ChatMessageRequest) -> ChatMess
     return ChatMessageResponse(session_id=session_id, messages=[user_message, assistant_message])
 
 
-def _build_prompt(
-    session: ChatSession,
-    user_message: ChatMessage,
-    payload: ChatMessageRequest,
-    context: List[ChatContextItem],
-) -> str:
-    history_fragment = "\n\n".join(
-        f"{message.role.value.upper()}: {message.content}" for message in session.messages[-6:]
-    )
-
-    context_lines = []
+def _compose_user_content(message: str, payload: ChatMessageRequest, context: List[ChatContextItem]) -> str:
+    segments: List[str] = [message.strip()]
+    context_lines: List[str] = []
     if payload.summary_text:
         context_lines.append(f"Summary:\n{payload.summary_text}")
     if payload.documents:
@@ -87,15 +94,6 @@ def _build_prompt(
         if item.summary_snippet:
             context_lines.append(f"Prior suggestion: {item.summary_snippet}")
 
-    context_block = "\n\n".join(context_lines)
-
-    prompt = textwrap.dedent(
-        f"""
-        You are an expert legal writing assistant providing precise and concise guidance.\n
-        Conversation history (most recent first):\n{history_fragment}\n
-        Additional context:\n{context_block}\n
-        User asks: {user_message.content}\n
-        Provide a direct answer grounded in the supplied materials. Offer actionable steps and cite relevant documents by id when applicable.
-        """
-    )
-    return prompt
+    if context_lines:
+        segments.append("Context:\n" + "\n\n".join(context_lines))
+    return "\n\n".join(segment for segment in segments if segment).strip()

@@ -1,0 +1,19 @@
+{
+  "model": {
+    "provider": "openai",
+    "defaults": {
+      "temperature": 0.3,
+      "max_output_tokens": 4096
+    },
+    "openai": {
+      "response_model": "gpt-5-nano",
+      "conversation_model": "gpt-5-nano"
+    },
+    "ollama": {
+      "base_url": "http://127.0.0.1:11434",
+      "timeout_seconds": 30,
+      "response_model": "qwen3:8b",
+      "conversation_model": "qwen3:8b"
+    }
+  }
+}
