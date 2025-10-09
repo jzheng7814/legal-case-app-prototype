@@ -1,6 +1,7 @@
 import { fetchDocuments as fetchDocumentsFromApi } from './apiClient';
 
-export const DEFAULT_CASE_ID = 'demo-case';
+// Reminder: '-1' is the reserved fallback case id for bundled mock documents.
+export const DEFAULT_CASE_ID = '-1';
 
 const LEGACY_DOCUMENTS = [
     { id: 'main-case', name: 'Johnson v. XYZ Corporation', type: 'Case File', filename: 'main-case.txt' },
