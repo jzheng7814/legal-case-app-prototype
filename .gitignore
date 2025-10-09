@@ -33,3 +33,4 @@ frontend/.env
 __pycache__/
 *.py[cod]
 logs/
+flat_db/
