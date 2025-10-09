@@ -3,7 +3,7 @@
     "provider": "openai",
     "defaults": {
       "temperature": 0.3,
-      "max_output_tokens": 4096
+      "max_output_tokens": 16384
     },
     "openai": {
       "response_model": "gpt-5-nano",
