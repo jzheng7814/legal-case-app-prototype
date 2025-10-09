@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 from fastapi import HTTPException
 
+from app.data.checklist_store import DocumentChecklistStore, JsonDocumentChecklistStore
 from app.schemas.documents import DocumentReference
 from app.services.documents import get_document
 from app.services.llm import llm_service
@@ -79,6 +80,11 @@ _CHECKLIST_ITEM_DESCRIPTIONS: Dict[str, str] = json.loads(_ITEM_DESCRIPTIONS_PAT
 
 _DOCUMENT_CACHE: Dict[str, Dict[str, Any]] = {}
 _DOCUMENT_CACHE_LOCK = asyncio.Lock()
+
+_CHECKLIST_DB_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "flat_db" / "document_checklist_items.json"
+)
+_DOCUMENT_CHECKLIST_STORE: DocumentChecklistStore = JsonDocumentChecklistStore(_CHECKLIST_DB_PATH)
 
 _MAX_DOCUMENT_CHARS = 12_000
 _MAX_SUMMARY_CHARS = 6_000
@@ -152,6 +158,14 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
         logger.debug("Checklist extraction cache hit for signature %s", signature)
         return _clone(cached)
 
+    stored = _DOCUMENT_CHECKLIST_STORE.get(case_id, signature=signature)
+    if stored is not None:
+        logger.debug("Checklist persistence hit for case %s", case_id)
+        cached_copy = _clone(stored.items)
+        async with _DOCUMENT_CACHE_LOCK:
+            _DOCUMENT_CACHE[signature] = cached_copy
+        return _clone(cached_copy)
+
     case_documents_block = _build_case_documents_block(payloads)
     results: Dict[str, Dict[str, Any]] = {}
 
@@ -165,6 +179,11 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
             logger.exception("Failed to extract checklist item '%s' for case %s", item_name, case_id)
             raise
         results[item_name] = extraction
+
+    try:
+        _DOCUMENT_CHECKLIST_STORE.set(case_id, signature=signature, items=_clone(results))
+    except Exception:  # pylint: disable=broad-except
+        logger.exception("Failed to persist checklist results for case %s", case_id)
 
     async with _DOCUMENT_CACHE_LOCK:
         cached = _DOCUMENT_CACHE.get(signature)
