@@ -170,9 +170,14 @@ const useChatStore = ({ summary, documents, highlight }) => {
                 documents: (documents.documents || []).map((doc) => ({ id: doc.id })),
             };
             const response = await sendChatMessageApi(sessionId, payload);
+            const summaryUpdate = response.summaryUpdate ?? response.summary_update;
             const newMessages = mapMessagesToUi(response.messages);
             setChatMessages((previous) => [...previous, ...newMessages]);
             setChatContext(activeContext);
+            if (summaryUpdate) {
+                const nextSummary = typeof summaryUpdate === 'string' ? summaryUpdate.trim() : summaryUpdate;
+                summary.setSummaryText(nextSummary);
+            }
             setAllChats((previous) => {
                 const filtered = previous.filter((chat) => chat.id !== sessionId);
                 const existing = previous.find((chat) => chat.id === sessionId);

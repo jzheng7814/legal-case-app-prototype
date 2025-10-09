@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from datetime import datetime
 from typing import Dict, List
@@ -21,10 +22,15 @@ _chat_sessions: Dict[str, ChatSession] = {}
 _chat_lock = asyncio.Lock()
 
 _SYSTEM_PROMPT = (
-    "You are an expert legal writing assistant providing precise and concise guidance. "
-    "Ground every response in the supplied summary, documents, highlights, and prior suggestions. "
-    "Cite document ids when relevant and keep answers direct."
+    "You are an expert legal writing assistant supporting attorneys. "
+    "Use the supplied summary, documents, highlights, and prior suggestions as the source of truth for every answer. "
+    "When the user explicitly asks you to revise, improve, or rewrite the case summary, draft a refreshed version that reflects the discussion and context. "
+    "Return the new summary inside a <summary_rewrite>...</summary_rewrite> block at the end of your reply. "
+    "Do not emit the summary block unless you are providing an updated summary. "
+    "Cite document ids when relevant and keep explanations concise and practical."
 )
+
+_SUMMARY_REWRITE_PATTERN = re.compile(r"<summary_rewrite>(.*?)</summary_rewrite>", re.IGNORECASE | re.DOTALL)
 
 
 async def create_session() -> ChatSession:
@@ -67,8 +73,9 @@ async def post_message(session_id: str, payload: ChatMessageRequest) -> ChatMess
     )
 
     response_text = await llm_service.chat(llm_messages, system=_SYSTEM_PROMPT)
+    cleaned_text, summary_update = _extract_summary_update(response_text)
 
-    assistant_message = ChatMessage(id=str(uuid.uuid4()), role=ChatMessageRole.assistant, content=response_text.strip())
+    assistant_message = ChatMessage(id=str(uuid.uuid4()), role=ChatMessageRole.assistant, content=cleaned_text.strip())
 
     updated_messages = session.messages + [user_message, assistant_message]
     updated_session = session.model_copy(update={"messages": updated_messages, "context": updated_context})
@@ -76,7 +83,7 @@ async def post_message(session_id: str, payload: ChatMessageRequest) -> ChatMess
     async with _chat_lock:
         _chat_sessions[session_id] = updated_session
 
-    return ChatMessageResponse(session_id=session_id, messages=[user_message, assistant_message])
+    return ChatMessageResponse(session_id=session_id, messages=[user_message, assistant_message], summary_update=summary_update)
 
 
 def _compose_user_content(message: str, payload: ChatMessageRequest, context: List[ChatContextItem]) -> str:
@@ -97,3 +104,14 @@ def _compose_user_content(message: str, payload: ChatMessageRequest, context: Li
     if context_lines:
         segments.append("Context:\n" + "\n\n".join(context_lines))
     return "\n\n".join(segment for segment in segments if segment).strip()
+
+
+def _extract_summary_update(response_text: str) -> tuple[str, str | None]:
+    match = _SUMMARY_REWRITE_PATTERN.search(response_text)
+    if not match:
+        return response_text, None
+
+    summary_text = match.group(1).strip()
+    cleaned_text = _SUMMARY_REWRITE_PATTERN.sub(summary_text, response_text).strip()
+
+    return cleaned_text, summary_text or None

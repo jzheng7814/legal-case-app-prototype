@@ -51,5 +51,6 @@ class ChatMessageRequest(BaseModel):
 class ChatMessageResponse(BaseModel):
     session_id: str = Field(..., alias="sessionId")
     messages: List[ChatMessage]
+    summary_update: Optional[str] = Field(default=None, alias="summaryUpdate")
 
     model_config = ConfigDict(populate_by_name=True)
