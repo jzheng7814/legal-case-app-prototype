@@ -30,7 +30,7 @@ async function request(path, options = {}) {
 async function safeJson(response) {
     try {
         return await response.json();
-    } catch (error) {
+    } catch {
         return null;
     }
 }

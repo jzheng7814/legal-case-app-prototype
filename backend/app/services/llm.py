@@ -5,24 +5,16 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
 from openai import AsyncOpenAI
 
 from app.core.config import Settings, get_settings
+from app.logging_utils import configure_file_logger
 
 logger = logging.getLogger(__name__)
-_file_logger = logging.getLogger("app.services.llm.file")
-if not _file_logger.handlers:
-    logs_root = Path(__file__).resolve().parents[2] / "logs"
-    logs_root.mkdir(parents=True, exist_ok=True)
-    handler = logging.FileHandler(logs_root / "llm.log")
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-    _file_logger.addHandler(handler)
-    _file_logger.setLevel(logging.INFO)
-    _file_logger.propagate = False
+_file_logger = configure_file_logger("app.services.llm.file", prefix="llm")
 
 
 @dataclass

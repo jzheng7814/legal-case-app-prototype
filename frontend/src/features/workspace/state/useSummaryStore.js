@@ -5,6 +5,11 @@ import { DEFAULT_CASE_ID } from '../../../services/documentService';
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 600000;
 
+const normaliseCaseId = (value) => {
+    const trimmed = (value || '').trim();
+    return trimmed.length > 0 ? trimmed : DEFAULT_CASE_ID;
+};
+
 const buildDocumentPayload = (documents = []) =>
     documents.map((doc) => ({
         id: doc.id,
@@ -21,7 +26,7 @@ const normaliseSuggestions = (suggestions = []) =>
         sourceDocument: suggestion.sourceDocument ?? suggestion.source_document ?? null
     }));
 
-const useSummaryStore = () => {
+const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
     const [summaryText, setSummaryText] = useState('');
     const [isEditMode, setIsEditMode] = useState(false);
     const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -38,12 +43,15 @@ const useSummaryStore = () => {
         setIsEditMode((previous) => !previous);
     }, []);
 
-    const pollSummaryJob = useCallback(async (caseId, jobId) => {
+    const resolvedCaseId = useMemo(() => normaliseCaseId(caseId), [caseId]);
+
+    const pollSummaryJob = useCallback(async (caseIdentifier, jobId) => {
         const startedAt = Date.now();
         let currentJob;
+        const normalisedCaseId = normaliseCaseId(caseIdentifier);
 
         while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
-            currentJob = await getSummaryJob(caseId, jobId).then((response) => response.job);
+            currentJob = await getSummaryJob(normalisedCaseId, jobId).then((response) => response.job);
             if (currentJob.status === 'succeeded' || currentJob.status === 'failed') {
                 return currentJob;
             }
@@ -54,11 +62,13 @@ const useSummaryStore = () => {
     }, []);
 
     const generateAISummary = useCallback(async (
-        { caseId = DEFAULT_CASE_ID, documents = [], instructions } = {}
+        { caseId: overrideCaseId, documents = [], instructions } = {}
     ) => {
         if (!documents.length) {
             throw new Error('At least one document is required to generate a summary.');
         }
+
+        const targetCaseId = normaliseCaseId(overrideCaseId ?? resolvedCaseId);
         setIsGeneratingSummary(true);
         setLastSummaryError(null);
         setSuggestions([]);
@@ -70,10 +80,10 @@ const useSummaryStore = () => {
                 documents: buildDocumentPayload(documents),
                 ...(instructions ? { instructions } : {})
             };
-            const { job } = await startSummaryJob(caseId, requestBody);
+            const { job } = await startSummaryJob(targetCaseId, requestBody);
             setSummaryJobId(job.id);
 
-            const finalJob = await pollSummaryJob(caseId, job.id);
+            const finalJob = await pollSummaryJob(targetCaseId, job.id);
             if (finalJob.status !== 'succeeded') {
                 throw new Error(finalJob.error || 'Summary generation failed.');
             }
@@ -87,20 +97,21 @@ const useSummaryStore = () => {
         } finally {
             setIsGeneratingSummary(false);
         }
-    }, [pollSummaryJob]);
+    }, [pollSummaryJob, resolvedCaseId]);
 
     const refreshSuggestions = useCallback(async (
-        { caseId = DEFAULT_CASE_ID, documents = [], maxSuggestions = 6 } = {}
+        { caseId: overrideCaseId, documents = [], maxSuggestions = 6 } = {}
     ) => {
         if (!summaryText.trim()) {
             setDocumentChecklists({});
             setSummaryChecklists({});
             return [];
         }
+
         setIsLoadingSuggestions(true);
         setSuggestionsError(null);
         try {
-            const response = await fetchSuggestions(caseId, {
+            const response = await fetchSuggestions(normaliseCaseId(overrideCaseId ?? resolvedCaseId), {
                 summaryText,
                 documents: buildDocumentPayload(documents),
                 maxSuggestions
@@ -119,7 +130,7 @@ const useSummaryStore = () => {
         } finally {
             setIsLoadingSuggestions(false);
         }
-    }, [summaryText]);
+    }, [resolvedCaseId, summaryText]);
 
     const value = useMemo(() => ({
         summaryText,
@@ -137,7 +148,8 @@ const useSummaryStore = () => {
         suggestionsError,
         summaryRef,
         documentChecklists,
-        summaryChecklists
+        summaryChecklists,
+        caseId: resolvedCaseId
     }), [
         generateAISummary,
         isEditMode,
@@ -151,7 +163,8 @@ const useSummaryStore = () => {
         toggleEditMode,
         isLoadingSuggestions,
         documentChecklists,
-        summaryChecklists
+        summaryChecklists,
+        resolvedCaseId
     ]);
 
     return value;

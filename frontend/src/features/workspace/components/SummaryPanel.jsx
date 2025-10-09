@@ -19,6 +19,7 @@ const SummaryPanel = () => {
         summaryChecklists
     } = useSummary();
     const documents = useDocuments();
+    const activeCaseId = documents.caseId;
     const {
         renderSummaryWithSuggestions,
         activeHighlight,
@@ -33,28 +34,28 @@ const SummaryPanel = () => {
 
     const canGenerateSummary = !isEditMode;
 
-    const contextDocuments = documents.documents || [];
+    const contextDocuments = documents.documents;
 
     const handleGenerateSummary = useCallback(async () => {
         setLocalError(null);
         try {
-            const generated = await generateAISummary({ documents: contextDocuments });
+            const generated = await generateAISummary({ caseId: activeCaseId, documents: contextDocuments });
             if (generated) {
-                await refreshSuggestions({ documents: contextDocuments });
+                await refreshSuggestions({ caseId: activeCaseId, documents: contextDocuments });
             }
         } catch (error) {
             setLocalError(error.message || 'Failed to generate summary.');
         }
-    }, [contextDocuments, generateAISummary, refreshSuggestions]);
+    }, [activeCaseId, contextDocuments, generateAISummary, refreshSuggestions]);
 
     const handleRefreshSuggestions = useCallback(async () => {
         setLocalError(null);
         try {
-            await refreshSuggestions({ documents: contextDocuments });
+            await refreshSuggestions({ caseId: activeCaseId, documents: contextDocuments });
         } catch (error) {
             setLocalError(error.message || 'Failed to refresh suggestions.');
         }
-    }, [contextDocuments, refreshSuggestions]);
+    }, [activeCaseId, contextDocuments, refreshSuggestions]);
 
     const handleAddChecklistToChat = useCallback(({ itemName, value, evidence, source }) => {
         addChecklistContext({ itemName, value, evidence, source });

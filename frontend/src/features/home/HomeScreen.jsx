@@ -1,7 +1,15 @@
 import React from 'react';
 import { Upload, FileText } from 'lucide-react';
 
-const HomeScreen = ({ caseId, onCaseIdChange, uploadedFiles, onFileUpload, onProceed, canProceed }) => (
+const HomeScreen = ({
+    caseId,
+    onCaseIdChange,
+    uploadedFiles,
+    onFileUpload,
+    onProceed,
+    canProceed,
+    isProcessingUploads = false
+}) => (
     <div className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-2xl mx-auto">
             <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">
@@ -28,6 +36,9 @@ const HomeScreen = ({ caseId, onCaseIdChange, uploadedFiles, onFileUpload, onPro
                             <span>or drag and drop</span>
                         </div>
                         <p className="text-xs text-gray-500">PDF, DOC, DOCX, TXT up to 10MB</p>
+                        {isProcessingUploads && (
+                            <p className="text-xs text-blue-600">Processing uploaded files...</p>
+                        )}
                     </div>
                 </div>
 
@@ -59,7 +70,7 @@ const HomeScreen = ({ caseId, onCaseIdChange, uploadedFiles, onFileUpload, onPro
                 disabled={!canProceed}
                 className="w-full bg-blue-600 text-white py-3 px-4 rounded-md font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
-                Proceed to Summary Editor
+                {isProcessingUploads ? 'Preparing documents...' : 'Proceed to Summary Editor'}
             </button>
         </div>
     </div>

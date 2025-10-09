@@ -29,8 +29,8 @@ const SummaryWorkspaceView = ({ onExit }) => (
     </div>
 );
 
-const SummaryWorkspace = ({ onExit }) => (
-    <WorkspaceStateProvider>
+const SummaryWorkspace = ({ onExit, caseId, uploadedDocuments }) => (
+    <WorkspaceStateProvider caseId={caseId} uploadedDocuments={uploadedDocuments}>
         <SummaryWorkspaceView onExit={onExit} />
     </WorkspaceStateProvider>
 );
