@@ -7,53 +7,17 @@ from typing import List
 
 from fastapi import HTTPException
 
-from app.schemas.suggestions import Suggestion, SuggestionRequest, SuggestionResponse, SuggestionValidationResult
+from app.schemas.suggestions import (
+    Suggestion,
+    SuggestionGenerationPayload,
+    SuggestionRequest,
+    SuggestionResponse,
+    SuggestionValidationResult,
+)
 from app.services.checklists import extract_document_checklists, extract_summary_checklists, get_checklist_definitions
 from app.services.llm import llm_service
 
 logger = logging.getLogger(__name__)
-
-_SUGGESTION_JSON_SCHEMA = json.dumps(
-    {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "SuggestionResponse",
-        "type": "object",
-        "required": ["suggestions"],
-        "properties": {
-            "suggestions": {
-                "type": "array",
-                "items": {
-                    "title": "Suggestion",
-                    "type": "object",
-                    "required": ["id", "type", "comment"],
-                    "properties": {
-                        "id": {"type": "string"},
-                        "type": {
-                            "type": "string",
-                            "enum": ["edit", "addition", "deletion"]
-                        },
-                        "comment": {"type": "string"},
-                        "sourceDocument": {"type": "string"},
-                        "originalText": {"type": "string"},
-                        "text": {"type": "string"},
-                        "position": {
-                            "title": "TextRange",
-                            "type": "object",
-                            "required": ["start", "end"],
-                            "properties": {
-                                "start": {"type": "integer", "minimum": 0},
-                                "end": {"type": "integer", "minimum": 0}
-                            },
-                            "additionalProperties": False
-                        }
-                    },
-                    "additionalProperties": False
-                }
-            }
-        },
-        "additionalProperties": False
-    }
-)
 
 
 async def generate_suggestions(case_id: str, request: SuggestionRequest) -> SuggestionResponse:
@@ -69,8 +33,8 @@ async def generate_suggestions(case_id: str, request: SuggestionRequest) -> Sugg
         raise HTTPException(status_code=500, detail=f"Failed to extract checklist items: {exc}") from exc
 
     definitions_json = json.dumps(get_checklist_definitions(), indent=2)
-    document_checklists_json = json.dumps(document_checklists, indent=2)
-    summary_checklists_json = json.dumps(summary_checklists, indent=2)
+    document_checklists_json = json.dumps(document_checklists.model_dump(by_alias=True), indent=2)
+    summary_checklists_json = json.dumps(summary_checklists.model_dump(by_alias=True), indent=2)
 
     prompt = (
         "You are an expert legal copy editor. Use the checklist extracted from the source documents as the ground"
@@ -90,25 +54,26 @@ async def generate_suggestions(case_id: str, request: SuggestionRequest) -> Sugg
     )
 
     try:
-        raw = await llm_service.generate_structured(prompt, schema_hint=_SUGGESTION_JSON_SCHEMA)
+        raw = await llm_service.generate_structured(
+            prompt,
+            response_model=SuggestionGenerationPayload,
+        )
     except Exception as exc:  # pylint: disable=broad-except
         logger.exception("LLM suggestion generation failed")
         raise HTTPException(status_code=500, detail=f"Failed to generate suggestions: {exc}") from exc
 
-    suggestions_payload = raw.get("suggestions", [])
-    suggestions = [Suggestion.model_validate(item) for item in suggestions_payload]
+    suggestions = raw.suggestions
     validation = validate_suggestions(suggestions)
     if validation.errors:
         logger.warning("Discarded %d overlapping suggestions", len(validation.errors))
 
     limited = validation.suggestions[: request.max_suggestions]
-    serialized_suggestions = [suggestion.model_dump(by_alias=True) for suggestion in limited]
-    response_payload = {
-        "suggestions": serialized_suggestions,
-        "documentChecklists": document_checklists,
-        "summaryChecklists": summary_checklists,
-    }
-    return response_payload
+    response = SuggestionResponse(
+        suggestions=limited,
+        document_checklists=document_checklists.model_copy(deep=True),
+        summary_checklists=summary_checklists.model_copy(deep=True),
+    )
+    return response
 
 
 def validate_suggestions(suggestions: List[Suggestion]) -> SuggestionValidationResult:

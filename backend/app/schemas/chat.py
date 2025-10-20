@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from .documents import DocumentReference
 
@@ -20,6 +20,7 @@ class ChatMessage(BaseModel):
     role: ChatMessageRole
     content: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class ChatContextItem(BaseModel):
@@ -27,6 +28,7 @@ class ChatContextItem(BaseModel):
     document_id: Optional[str] = None
     summary_snippet: Optional[str] = None
     highlight_text: Optional[str] = None
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class ChatSession(BaseModel):
@@ -35,22 +37,36 @@ class ChatSession(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     messages: List[ChatMessage] = Field(default_factory=list)
     context: List[ChatContextItem] = Field(default_factory=list)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class CreateChatSessionResponse(BaseModel):
     session: ChatSession
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class ChatMessageRequest(BaseModel):
     message: str
     context: Optional[List[ChatContextItem]] = None
     documents: Optional[List[DocumentReference]] = None
-    summary_text: Optional[str] = Field(None, alias="summaryText")
+    summary_text: Optional[str] = Field(
+        None,
+        serialization_alias="summaryText",
+        validation_alias=AliasChoices("summaryText", "summary_text"),
+    )
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class ChatMessageResponse(BaseModel):
-    session_id: str = Field(..., alias="sessionId")
+    session_id: str = Field(
+        ...,
+        serialization_alias="sessionId",
+        validation_alias=AliasChoices("sessionId", "session_id"),
+    )
     messages: List[ChatMessage]
-    summary_update: Optional[str] = Field(default=None, alias="summaryUpdate")
-
-    model_config = ConfigDict(populate_by_name=True)
+    summary_update: Optional[str] = Field(
+        default=None,
+        serialization_alias="summaryUpdate",
+        validation_alias=AliasChoices("summaryUpdate", "summary_update"),
+    )
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)

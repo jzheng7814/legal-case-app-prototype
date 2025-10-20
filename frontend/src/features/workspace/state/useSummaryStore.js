@@ -26,6 +26,54 @@ const normaliseSuggestions = (suggestions = []) =>
         sourceDocument: suggestion.sourceDocument ?? suggestion.source_document ?? null
     }));
 
+const normaliseChecklistCollection = (collection) => {
+    if (!collection) {
+        return [];
+    }
+
+    if (Array.isArray(collection)) {
+        return collection
+            .map((entry) => ({
+                itemName: entry?.itemName ?? entry?.item_name ?? entry?.name ?? '',
+                extraction: {
+                    reasoning: entry?.extraction?.reasoning ?? entry?.result?.reasoning ?? '',
+                    extracted: Array.isArray(entry?.extraction?.extracted ?? entry?.result?.extracted)
+                        ? entry.extraction?.extracted ?? entry.result?.extracted
+                        : []
+                }
+            }))
+            .filter((entry) => entry.itemName);
+    }
+
+    const items = collection.items ?? collection.Items;
+    if (Array.isArray(items)) {
+        return items
+            .map((entry) => ({
+                itemName: entry?.itemName ?? entry?.item_name ?? entry?.name ?? '',
+                extraction: {
+                    reasoning: entry?.extraction?.reasoning ?? entry?.result?.reasoning ?? '',
+                    extracted: Array.isArray(entry?.extraction?.extracted ?? entry?.result?.extracted)
+                        ? entry.extraction?.extracted ?? entry.result?.extracted
+                        : []
+                }
+            }))
+            .filter((entry) => entry.itemName);
+    }
+
+    if (typeof collection === 'object') {
+        return Object.entries(collection)
+            .map(([itemName, payload]) => ({
+                itemName,
+                extraction: {
+                    reasoning: payload?.reasoning ?? '',
+                    extracted: Array.isArray(payload?.extracted) ? payload.extracted : []
+                }
+            }));
+    }
+
+    return [];
+};
+
 const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
     const [summaryText, setSummaryText] = useState('');
     const [isEditMode, setIsEditMode] = useState(false);
@@ -36,8 +84,8 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
     const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
     const [suggestionsError, setSuggestionsError] = useState(null);
     const summaryRef = useRef(null);
-    const [documentChecklists, setDocumentChecklists] = useState({});
-    const [summaryChecklists, setSummaryChecklists] = useState({});
+    const [documentChecklists, setDocumentChecklists] = useState([]);
+    const [summaryChecklists, setSummaryChecklists] = useState([]);
 
     const toggleEditMode = useCallback(() => {
         setIsEditMode((previous) => !previous);
@@ -72,8 +120,8 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
         setIsGeneratingSummary(true);
         setLastSummaryError(null);
         setSuggestions([]);
-        setDocumentChecklists({});
-        setSummaryChecklists({});
+        setDocumentChecklists([]);
+        setSummaryChecklists([]);
 
         try {
             const requestBody = {
@@ -103,8 +151,8 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
         { caseId: overrideCaseId, documents = [], maxSuggestions = 6 } = {}
     ) => {
         if (!summaryText.trim()) {
-            setDocumentChecklists({});
-            setSummaryChecklists({});
+            setDocumentChecklists([]);
+            setSummaryChecklists([]);
             return [];
         }
 
@@ -116,13 +164,13 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
                 documents: buildDocumentPayload(documents),
                 maxSuggestions
             });
-            const normalised = normaliseSuggestions(response.suggestions);
-            const documentChecklistPayload = response.documentChecklists ?? response.document_checklists ?? {};
-            const summaryChecklistPayload = response.summaryChecklists ?? response.summary_checklists ?? {};
-            setDocumentChecklists(documentChecklistPayload);
-            setSummaryChecklists(summaryChecklistPayload);
-            setSuggestions(normalised);
-            return normalised;
+            const normalisedSuggestions = normaliseSuggestions(response.suggestions);
+            const documentChecklistPayload = response.documentChecklists ?? response.document_checklists ?? [];
+            const summaryChecklistPayload = response.summaryChecklists ?? response.summary_checklists ?? [];
+            setDocumentChecklists(normaliseChecklistCollection(documentChecklistPayload));
+            setSummaryChecklists(normaliseChecklistCollection(summaryChecklistPayload));
+            setSuggestions(normalisedSuggestions);
+            return normalisedSuggestions;
         } catch (error) {
             console.error('Failed to fetch AI suggestions', error);
             setSuggestionsError(error);

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from openai import AsyncOpenAI
+from pydantic import BaseModel, ValidationError
 
 from app.core.config import Settings, get_settings
 from app.logging_utils import configure_file_logger
@@ -40,6 +41,11 @@ def _safe_json_dump(payload: Any) -> str:
         return str(payload)
 
 
+def _schema_from_model(model: type[BaseModel]) -> str:
+    schema = model.model_json_schema(by_alias=True)
+    return json.dumps(schema, indent=2, sort_keys=True)
+
+
 class LLMBackend:
     async def generate_response(
         self,
@@ -53,9 +59,10 @@ class LLMBackend:
         self,
         prompt: str,
         *,
-        schema_hint: str,
+        response_model: type[BaseModel],
+        schema: str,
         system: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> BaseModel:
         raise NotImplementedError
 
     async def chat(
@@ -116,20 +123,21 @@ class OllamaBackend(LLMBackend):
         self,
         prompt: str,
         *,
-        schema_hint: str,
+        response_model: type[BaseModel],
+        schema: str,
         system: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> BaseModel:
         json_prompt = (
             "Return only valid JSON conforming to this schema definition:\n"
-            f"{schema_hint}\n\n"
+            f"{schema}\n\n"
             "Respond with JSON only, no natural language commentary.\n\n"
             f"{prompt}"
         )
         result = await self.generate_response(json_prompt, system=system)
         try:
-            return json.loads(result.text)
-        except json.JSONDecodeError as exc:
-            logger.warning("Ollama JSON parsing failed: %s", exc)
+            return response_model.model_validate_json(result.text)
+        except (ValidationError, ValueError) as exc:
+            logger.warning("Ollama structured parsing failed: %s", exc)
             raise
 
     async def chat(
@@ -207,37 +215,46 @@ class OpenAIBackend(LLMBackend):
         self,
         prompt: str,
         *,
-        schema_hint: str,
+        response_model: type[BaseModel],
+        schema: str,
         system: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        response = await self._client.responses.create(
+    ) -> BaseModel:
+        structured_instructions = (
+            "Return a JSON object that satisfies this schema description. "
+            "Do not include any additional commentary.\n"
+            f"{schema}"
+        )
+        combined_system = structured_instructions if system is None else f"{structured_instructions}\n\n{system}"
+        response = await self._client.responses.parse(
             model=self._response_model,
             input=[
                 {
                     "role": "system",
-                    "content": (
-                        "Return a JSON object that satisfies this schema description. "
-                        "Do not include any additional commentary.\n"
-                        f"{schema_hint}"
-                    ),
+                    "content": combined_system,
                 },
                 {"role": "user", "content": prompt},
             ],
             max_output_tokens=self._defaults.max_output_tokens,
             reasoning={
                 "effort": self._reasoning_effort,
-            }
+            },
+            text_format=response_model,
         )
         _file_logger.info(_safe_json_dump({
             "operation": "openai.generate_structured.response",
             "response": response.model_dump(),
         }))
-        text = _strip_reasoning_tokens(_collect_openai_text(response)).strip()
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            logger.warning("OpenAI JSON parsing failed: %s", exc)
-            raise
+        parsed = getattr(response, "output_parsed", None)
+        if parsed is None:
+            logger.warning("OpenAI structured output missing parsed payload")
+            raise ValueError("Structured output did not produce parsed content")
+        if not isinstance(parsed, response_model):
+            try:
+                return response_model.model_validate(parsed)
+            except ValidationError as exc:
+                logger.warning("OpenAI structured output validation failed: %s", exc)
+                raise
+        return parsed
 
     async def chat(
         self,
@@ -284,23 +301,35 @@ class MockBackend(LLMBackend):
         self,
         prompt: str,
         *,
-        schema_hint: str,
+        response_model: type[BaseModel],
+        schema: str,
         system: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> BaseModel:
         # Return a deterministic placeholder suggestion list.
-        return {
-            "suggestions": [
-                {
-                    "id": "mock-1",
-                    "type": "edit",
-                    "comment": "Replace informal phrasing with formal legal language.",
-                    "sourceDocument": "main-case",
-                    "originalText": "stuff",
-                    "text": "additional particulars",
-                    "position": {"start": 0, "end": 5},
-                }
-            ]
-        }
+        if response_model.__name__ == "SuggestionGenerationPayload":
+            payload = {
+                "suggestions": [
+                    {
+                        "id": "mock-1",
+                        "type": "edit",
+                        "comment": "Replace informal phrasing with formal legal language.",
+                        "sourceDocument": "main-case",
+                        "originalText": "stuff",
+                        "text": "additional particulars",
+                        "position": {"start": 0, "end": 5},
+                    }
+                ]
+            }
+            return response_model.model_validate(payload)
+        if response_model.__name__ == "ChecklistExtractionPayload":
+            payload = {"reasoning": "Mock reasoning", "extracted": []}
+            return response_model.model_validate(payload)
+        if response_model.__name__ == "SummaryChecklistExtractionPayload":
+            return response_model.model_validate({"items": []})
+        try:
+            return response_model.model_validate({})
+        except ValidationError as exc:
+            raise RuntimeError(f"Mock backend cannot satisfy response model {response_model.__name__}") from exc
 
     async def chat(
         self,
@@ -410,18 +439,33 @@ class LLMService:
         self,
         prompt: str,
         *,
-        schema_hint: str,
+        response_model: type[BaseModel],
         system: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> BaseModel:
+        schema_hint = _schema_from_model(response_model)
         self._log_call(
             "generate_structured",
             system=system,
             prompt_text=prompt,
-            request_payload={"prompt": prompt, "schema_hint": schema_hint, "system": system},
+            request_payload={
+                "prompt": prompt,
+                "response_model": response_model.__name__,
+                "schema_hint": schema_hint,
+                "system": system,
+            },
             is_chat=False,
         )
-        result = await self._backend.generate_structured(prompt, schema_hint=schema_hint, system=system)
-        self._log_response("generate_structured", result)
+        result = await self._backend.generate_structured(
+            prompt,
+            response_model=response_model,
+            schema=schema_hint,
+            system=system,
+        )
+        if isinstance(result, BaseModel):
+            serialized = result.model_dump(by_alias=True)
+        else:
+            serialized = result
+        self._log_response("generate_structured", serialized)
         return result
 
     async def chat(

@@ -4,8 +4,19 @@ import { ClipboardList } from 'lucide-react';
 const formatLabel = (label = '') =>
     label.replace(/_/g, ' ').replace(/\s+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()).trim();
 
-const ChecklistColumn = ({ title, items = {}, onAdd, source }) => {
-    const entries = useMemo(() => Object.entries(items || {}), [items]);
+const ChecklistColumn = ({ title, items = [], onAdd, source }) => {
+    const entries = useMemo(() => {
+        if (!Array.isArray(items)) {
+            return [];
+        }
+        return items.map((entry) => ({
+            itemName: entry?.itemName ?? entry?.item_name ?? entry?.name ?? 'Checklist Item',
+            extraction: entry?.extraction ?? entry?.result ?? {
+                reasoning: '',
+                extracted: []
+            }
+        }));
+    }, [items]);
 
     return (
         <div className="flex flex-col min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm">
@@ -17,8 +28,8 @@ const ChecklistColumn = ({ title, items = {}, onAdd, source }) => {
                 {entries.length === 0 && (
                     <p className="text-xs text-gray-500">No checklist items available yet.</p>
                 )}
-                {entries.map(([itemName, payload]) => {
-                    const extracted = Array.isArray(payload?.extracted) ? payload.extracted : [];
+                {entries.map(({ itemName, extraction }) => {
+                    const extracted = Array.isArray(extraction?.extracted) ? extraction.extracted : [];
                     return (
                         <div key={itemName} className="rounded border border-gray-100 bg-gray-50/80 px-3 py-2">
                             <div className="flex items-start justify-between gap-2">

@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .documents import DocumentReference
 
@@ -20,6 +20,7 @@ class SummaryRequest(BaseModel):
     instructions: Optional[str] = Field(
         None, description="Optional user guidance the LLM should follow when drafting the summary"
     )
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class SummaryJob(BaseModel):
@@ -28,7 +29,9 @@ class SummaryJob(BaseModel):
     status: SummaryJobStatus
     summary_text: Optional[str] = None
     error: Optional[str] = None
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class SummaryJobEnvelope(BaseModel):
     job: SummaryJob
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)

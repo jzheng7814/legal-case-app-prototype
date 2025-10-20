@@ -5,65 +5,22 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Dict, List
 
 from fastapi import HTTPException
 
 from app.data.checklist_store import DocumentChecklistStore, JsonDocumentChecklistStore
+from app.schemas.checklists import (
+    ChecklistCollection,
+    ChecklistExtractionPayload,
+    ChecklistItemResult,
+    SummaryChecklistExtractionPayload,
+)
 from app.schemas.documents import DocumentReference
 from app.services.documents import get_document
 from app.services.llm import llm_service
 
 logger = logging.getLogger(__name__)
-
-_DOCUMENT_CHECKLIST_SCHEMA = json.dumps(
-    {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "ChecklistExtraction",
-        "type": "object",
-        "required": ["reasoning", "extracted"],
-        "properties": {
-            "reasoning": {"type": "string"},
-            "extracted": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "required": ["value", "evidence"],
-                    "properties": {
-                        "value": {"type": "string"},
-                        "evidence": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "required": ["text", "source_document", "location"],
-                                "properties": {
-                                    "text": {"type": "string"},
-                                    "source_document": {"type": "string"},
-                                    "location": {"type": "string"},
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-    }
-)
-
-_SUMMARY_CHECKLIST_SCHEMA = json.dumps(
-    {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "SummaryChecklistExtraction",
-        "type": "object",
-        "required": ["items"],
-        "properties": {
-            "items": {
-                "type": "object",
-                "additionalProperties": json.loads(_DOCUMENT_CHECKLIST_SCHEMA),
-            }
-        },
-    }
-)
 
 _ASSET_DIR = Path(__file__).resolve().parents[1] / "resources" / "checklists"
 _TEMPLATE_PATH = _ASSET_DIR / "general_template.txt"
@@ -78,7 +35,7 @@ if not _ITEM_DESCRIPTIONS_PATH.exists():
 _DOCUMENT_PROMPT_TEMPLATE = _TEMPLATE_PATH.read_text(encoding="utf-8")
 _CHECKLIST_ITEM_DESCRIPTIONS: Dict[str, str] = json.loads(_ITEM_DESCRIPTIONS_PATH.read_text(encoding="utf-8"))
 
-_DOCUMENT_CACHE: Dict[str, Dict[str, Any]] = {}
+_DOCUMENT_CACHE: Dict[str, ChecklistCollection] = {}
 _DOCUMENT_CACHE_LOCK = asyncio.Lock()
 
 _CHECKLIST_DB_PATH = (
@@ -141,13 +98,13 @@ def _compute_documents_signature(case_id: str, payloads: List[Dict[str, str]]) -
     return digest.hexdigest()
 
 
-def _clone(data: Dict[str, Any]) -> Dict[str, Any]:
-    return json.loads(json.dumps(data))
+def _copy_collection(collection: ChecklistCollection) -> ChecklistCollection:
+    return collection.model_copy(deep=True)
 
 
-async def extract_document_checklists(case_id: str, documents: List[DocumentReference]) -> Dict[str, Dict[str, Any]]:
+async def extract_document_checklists(case_id: str, documents: List[DocumentReference]) -> ChecklistCollection:
     if not documents:
-        return {}
+        return ChecklistCollection(items=[])
 
     payloads = _resolve_document_payloads(case_id, documents)
     signature = _compute_documents_signature(case_id, payloads)
@@ -156,42 +113,46 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
         cached = _DOCUMENT_CACHE.get(signature)
     if cached is not None:
         logger.debug("Checklist extraction cache hit for signature %s", signature)
-        return _clone(cached)
+        return _copy_collection(cached)
 
     stored = _DOCUMENT_CHECKLIST_STORE.get(case_id, signature=signature)
     if stored is not None:
         logger.debug("Checklist persistence hit for case %s", case_id)
-        cached_copy = _clone(stored.items)
+        cached_copy = _copy_collection(stored.items)
         async with _DOCUMENT_CACHE_LOCK:
             _DOCUMENT_CACHE[signature] = cached_copy
-        return _clone(cached_copy)
+        return _copy_collection(cached_copy)
 
     case_documents_block = _build_case_documents_block(payloads)
-    results: Dict[str, Dict[str, Any]] = {}
+    items: List[ChecklistItemResult] = []
 
     for item_name, description in _CHECKLIST_ITEM_DESCRIPTIONS.items():
         prompt = _DOCUMENT_PROMPT_TEMPLATE.replace("{item_description}", description).replace(
             "{case_documents}", case_documents_block
         )
         try:
-            extraction = await llm_service.generate_structured(prompt, schema_hint=_DOCUMENT_CHECKLIST_SCHEMA)
+            extraction = await llm_service.generate_structured(
+                prompt,
+                response_model=ChecklistExtractionPayload,
+            )
         except Exception:  # pylint: disable=broad-except
             logger.exception("Failed to extract checklist item '%s' for case %s", item_name, case_id)
             raise
-        results[item_name] = extraction
+        items.append(ChecklistItemResult(item_name=item_name, extraction=extraction))
 
+    results = ChecklistCollection(items=items)
     try:
-        _DOCUMENT_CHECKLIST_STORE.set(case_id, signature=signature, items=_clone(results))
+        _DOCUMENT_CHECKLIST_STORE.set(case_id, signature=signature, items=results)
     except Exception:  # pylint: disable=broad-except
         logger.exception("Failed to persist checklist results for case %s", case_id)
 
     async with _DOCUMENT_CACHE_LOCK:
         cached = _DOCUMENT_CACHE.get(signature)
         if cached is None:
-            _DOCUMENT_CACHE[signature] = _clone(results)
+            _DOCUMENT_CACHE[signature] = _copy_collection(results)
             cached = _DOCUMENT_CACHE[signature]
 
-    return _clone(cached)
+    return _copy_collection(cached)
 
 
 def _build_summary_prompt(summary_text: str) -> str:
@@ -206,23 +167,26 @@ def _build_summary_prompt(summary_text: str) -> str:
         "Summary:\n{summary_text}\n\n"
         "Return JSON with the following structure:\n"
         "{\n"
-        '  "items": {\n'
-        '    "<ChecklistItemName>": {\n'
-        '      "reasoning": "<brief justification>",\n'
-        '      "extracted": [\n'
-        "        {\n"
-        '          "value": "<concise value>",\n'
-        '          "evidence": [\n'
-        "            {\n"
-        '              "text": "<exact summary quote>",\n'
-        '              "source_document": "Summary",\n'
-        '              "location": "<sentence or section reference>"\n'
-        "            }\n"
-        "          ]\n"
-        "        }\n"
-        "      ]\n"
+        '  "items": [\n'
+        "    {\n"
+        '      "itemName": "<ChecklistItemName>",\n'
+        '      "extraction": {\n'
+        '        "reasoning": "<brief justification>",\n'
+        '        "extracted": [\n'
+        "          {\n"
+        '            "value": "<concise value>",\n'
+        '            "evidence": [\n'
+        "              {\n"
+        '                "text": "<exact summary quote>",\n'
+        '                "source_document": "Summary",\n'
+        '                "location": "<sentence or section reference>"\n'
+        "              }\n"
+        "            ]\n"
+        "          }\n"
+        "        ]\n"
+        "      }\n"
         "    }\n"
-        "  }\n"
+        "  ]\n"
         "}\n"
     )
 
@@ -233,26 +197,38 @@ def _build_summary_prompt(summary_text: str) -> str:
     )
 
 
-async def extract_summary_checklists(summary_text: str) -> Dict[str, Dict[str, Any]]:
+async def extract_summary_checklists(summary_text: str) -> ChecklistCollection:
     if not summary_text.strip():
-        return {
-            item: {"reasoning": "Summary text was empty.", "extracted": []}
-            for item in _CHECKLIST_ITEM_DESCRIPTIONS
-        }
+        return ChecklistCollection(
+            items=[
+                ChecklistItemResult(
+                    item_name=item,
+                    extraction=ChecklistExtractionPayload(
+                        reasoning="Summary text was empty.",
+                        extracted=[],
+                    ),
+                )
+                for item in _CHECKLIST_ITEM_DESCRIPTIONS
+            ]
+        )
 
     prompt = _build_summary_prompt(summary_text)
     try:
         response = await llm_service.generate_structured(
             prompt,
-            schema_hint=_SUMMARY_CHECKLIST_SCHEMA,
+            response_model=SummaryChecklistExtractionPayload,
         )
     except Exception:  # pylint: disable=broad-except
         logger.exception("Failed to extract checklist items from summary")
         raise
 
-    items = response.get("items", {})
-    # Ensure every checklist item has an entry so downstream logic can rely on consistent keys.
-    for item in _CHECKLIST_ITEM_DESCRIPTIONS:
-        items.setdefault(item, {"reasoning": "", "extracted": []})
+    by_name = {item.item_name: item.extraction for item in response.items}
+    normalized_items: List[ChecklistItemResult] = []
+    for item_name in _CHECKLIST_ITEM_DESCRIPTIONS:
+        extraction = by_name.get(
+            item_name,
+            ChecklistExtractionPayload(reasoning="", extracted=[]),
+        )
+        normalized_items.append(ChecklistItemResult(item_name=item_name, extraction=extraction))
 
-    return items
+    return ChecklistCollection(items=normalized_items)

@@ -7,9 +7,12 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Dict, Optional, Protocol
 
+from pydantic import ValidationError
+
+from app.schemas.checklists import ChecklistCollection
 logger = logging.getLogger(__name__)
 
-DocumentChecklistPayload = Dict[str, Dict[str, Any]]
+DocumentChecklistPayload = ChecklistCollection
 
 
 @dataclass(frozen=True)
@@ -50,10 +53,14 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
                 return None
             stored_signature = raw_entry.get("signature")
             items = raw_entry.get("items")
-        if not isinstance(stored_signature, str) or not isinstance(items, dict):
+        if not isinstance(stored_signature, str) or items is None:
             logger.debug("Checklist store entry for case %s missing expected structure.", key)
             return None
-        record = StoredDocumentChecklist(signature=stored_signature, items=items)
+        collection = _coerce_to_collection(items)
+        if collection is None:
+            logger.debug("Checklist store entry for case %s failed validation.", key)
+            return None
+        record = StoredDocumentChecklist(signature=stored_signature, items=collection)
         if signature and record.signature != signature:
             logger.debug(
                 "Checklist store signature mismatch for case %s (expected %s, found %s).",
@@ -66,7 +73,7 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
 
     def set(self, case_id: str, *, signature: str, items: DocumentChecklistPayload) -> None:
         key = _normalize_case_id(case_id)
-        record = {"signature": signature, "items": items}
+        record = {"signature": signature, "items": items.model_dump(by_alias=True)}
         with self._lock:
             payload = self._load()
             payload[key] = record
@@ -106,6 +113,33 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
                     tmp_path.unlink()
                 except OSError:
                     logger.warning("Unable to clean up temporary checklist store file %s.", tmp_path)
+
+
+def _coerce_to_collection(raw_items: Any) -> Optional[ChecklistCollection]:
+    if isinstance(raw_items, ChecklistCollection):
+        return raw_items
+
+    payload: Dict[str, Any]
+    if isinstance(raw_items, dict):
+        if "items" in raw_items:
+            payload = raw_items
+        else:
+            entries = []
+            for name, value in raw_items.items():
+                if not isinstance(name, str) or not isinstance(value, dict):
+                    return None
+                entries.append({"itemName": name, "extraction": value})
+            payload = {"items": entries}
+    elif isinstance(raw_items, list):
+        payload = {"items": raw_items}
+    else:
+        return None
+
+    try:
+        return ChecklistCollection.model_validate(payload)
+    except ValidationError:
+        logger.debug("Checklist collection payload failed validation.")
+        return None
 
 
 def _normalize_case_id(case_id: str) -> str:

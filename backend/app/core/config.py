@@ -6,13 +6,14 @@ from functools import cached_property, lru_cache
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ModelDefaults(BaseModel):
     temperature: float = 0.3
     max_output_tokens: int = 4096
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class OpenAIModelConfig(BaseModel):
@@ -20,6 +21,7 @@ class OpenAIModelConfig(BaseModel):
     conversation_model: Optional[str] = None
     reasoning_effort: str
     api_key: Optional[str] = None
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     def conversation_model_name(self) -> str:
         return self.conversation_model or self.response_model
@@ -30,6 +32,7 @@ class OllamaModelConfig(BaseModel):
     timeout_seconds: float = 60.0
     response_model: str
     conversation_model: Optional[str] = None
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     def conversation_model_name(self) -> str:
         return self.conversation_model or self.response_model
@@ -40,10 +43,12 @@ class ModelConfig(BaseModel):
     defaults: ModelDefaults = Field(default_factory=ModelDefaults)
     openai: Optional[OpenAIModelConfig] = None
     ollama: Optional[OllamaModelConfig] = None
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class AppConfig(BaseModel):
     model: ModelConfig
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class Settings(BaseSettings):
