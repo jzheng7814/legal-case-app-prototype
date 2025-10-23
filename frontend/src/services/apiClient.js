@@ -36,8 +36,7 @@ async function safeJson(response) {
 }
 
 export async function fetchDocuments(caseId) {
-    const payload = await request(`/cases/${caseId}/documents`);
-    return payload.documents || [];
+    return request(`/cases/${caseId}/documents`);
 }
 
 export async function startSummaryJob(caseId, body) {

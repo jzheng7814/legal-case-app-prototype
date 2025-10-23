@@ -248,12 +248,16 @@ class ClearinghouseClient:
         return []
 
     def _convert_document(self, raw: Dict[str, Any], case_title: Optional[str]) -> Document:
-        document_id = str(raw.get("id") or raw.get("document_id") or "")
-        if not document_id:
+        document_id_raw = raw.get("id") or raw.get("document_id")
+        if document_id_raw is None:
             raise ClearinghouseError("Clearinghouse document payload missing identifier.")
+        try:
+            document_id = int(document_id_raw)
+        except (TypeError, ValueError) as exc:
+            raise ClearinghouseError("Clearinghouse document identifier must be an integer.") from exc
 
-        default_name = f"Document {document_id}"
-        name = _normalise_string(raw.get("title")) or _normalise_string(raw.get("description")) or default_name
+        default_title = f"Document {document_id}"
+        title = _normalise_string(raw.get("title")) or _normalise_string(raw.get("description")) or default_title
         description = _normalise_string(raw.get("description")) or case_title
         doc_type = (
             _normalise_string(raw.get("document_type_other"))
@@ -266,7 +270,7 @@ class ClearinghouseClient:
 
         return Document(
             id=document_id,
-            name=name,
+            title=title,
             type=doc_type or "Document",
             description=description,
             source="clearinghouse",
@@ -278,18 +282,22 @@ class ClearinghouseClient:
         if not isinstance(entries, Iterable):
             return None
 
-        docket_id = str(raw.get("id") or "")
-        if not docket_id:
+        docket_id_raw = raw.get("id")
+        if docket_id_raw is None:
+            return None
+        try:
+            docket_id = int(docket_id_raw)
+        except (TypeError, ValueError):
             return None
 
         # Name per request: "Docket <docket-id>"
-        name = f"Docket {docket_id}"
+        title = f"Docket {docket_id}"
         description = _normalise_string(raw.get("court")) or case_title
         content = _render_docket_content(entries)
 
         return Document(
-            id=f"docket-{docket_id}",
-            name=name or "Case Docket",
+            id=docket_id,
+            title=title or "Case Docket",
             type="Docket",
             description=description,
             source="clearinghouse",

@@ -21,13 +21,19 @@ const DocumentsPanel = () => {
             <div className="flex-1 p-4 flex flex-col space-y-4 min-h-0">
                 {documents.length > 0 ? (
                     <select
-                        value={selectedDocument}
-                        onChange={(event) => setSelectedDocument(event.target.value)}
+                        value={selectedDocument != null ? String(selectedDocument) : ''}
+                        onChange={(event) => {
+                            const nextValue = Number.parseInt(event.target.value, 10);
+                            if (!Number.isNaN(nextValue)) {
+                                setSelectedDocument(nextValue);
+                            }
+                        }}
                         className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                         {documents.map((doc) => (
-                            <option key={doc.id} value={doc.id}>
-                                {doc.name} ({doc.type})
+                            <option key={doc.id} value={String(doc.id)}>
+                                {doc.title}
+                                {doc.type ? ` (${doc.type})` : ''}
                             </option>
                         ))}
                     </select>

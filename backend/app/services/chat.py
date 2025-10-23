@@ -31,6 +31,7 @@ _SYSTEM_PROMPT = (
 )
 
 _SUMMARY_REWRITE_PATTERN = re.compile(r"<summary_rewrite>(.*?)</summary_rewrite>", re.IGNORECASE | re.DOTALL)
+SUMMARY_DOCUMENT_ID = -1
 
 
 async def create_session() -> ChatSession:
@@ -94,10 +95,24 @@ def _compose_user_content(message: str, payload: ChatMessageRequest, context: Li
     if payload.documents:
         for doc in payload.documents:
             if doc.content:
-                context_lines.append(f"Document {doc.id}: {doc.content[:1500]}")
+                title = getattr(doc, "title", None) or getattr(doc, "alias", None)
+                header = f"Document {doc.id}"
+                if title:
+                    header += f" — {title}"
+                context_lines.append(f"{header}:\n{doc.content[:1500]}")
+            else:
+                title = getattr(doc, "title", None) or getattr(doc, "alias", None)
+                header = f"Document {doc.id}"
+                if title:
+                    header += f" — {title}"
+                context_lines.append(header)
     for item in context:
         if item.highlight_text:
-            context_lines.append(f"Highlight from {item.document_id or 'summary'}: {item.highlight_text}")
+            if item.document_id is None or item.document_id == SUMMARY_DOCUMENT_ID:
+                source_label = "summary"
+            else:
+                source_label = f"Document {item.document_id}"
+            context_lines.append(f"Highlight from {source_label}: {item.highlight_text}")
         if item.summary_snippet:
             context_lines.append(f"Prior suggestion: {item.summary_snippet}")
 

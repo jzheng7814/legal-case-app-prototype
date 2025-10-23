@@ -22,17 +22,14 @@ const App = () => {
 
         setIsProcessingUploads(true);
         try {
+            const baseId = Date.now();
             const docs = await Promise.all(
                 files.map(async (file, index) => {
                     const content = await file.text();
                     const extension = file.name.split('.').pop()?.toUpperCase() || 'FILE';
-                    const uniqueId =
-                        typeof crypto !== 'undefined' && crypto.randomUUID
-                            ? crypto.randomUUID()
-                            : `upload-${Date.now()}-${index}`;
                     return {
-                        id: uniqueId,
-                        name: file.name,
+                        id: baseId + index,
+                        title: file.name,
                         type: `Uploaded ${extension}`,
                         description: `Uploaded file ${file.name}`,
                         source: 'upload',

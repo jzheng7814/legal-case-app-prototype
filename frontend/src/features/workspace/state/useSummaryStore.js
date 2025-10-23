@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchSuggestions, getSummaryJob, startSummaryJob } from '../../../services/apiClient';
 import { DEFAULT_CASE_ID } from '../../../services/documentService';
 
@@ -13,6 +13,7 @@ const normaliseCaseId = (value) => {
 const buildDocumentPayload = (documents = []) =>
     documents.map((doc) => ({
         id: doc.id,
+        title: doc.title || doc.name || doc.id,
         include_full_text: true,
         content: doc.content
     }));
@@ -74,7 +75,11 @@ const normaliseChecklistCollection = (collection) => {
     return [];
 };
 
-const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
+const useSummaryStore = ({
+    caseId = DEFAULT_CASE_ID,
+    prefetchedDocumentChecklists = null,
+    documentChecklistStatus: initialDocumentChecklistStatus = 'idle'
+} = {}) => {
     const [summaryText, setSummaryText] = useState('');
     const [isEditMode, setIsEditMode] = useState(false);
     const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -85,6 +90,9 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
     const [suggestionsError, setSuggestionsError] = useState(null);
     const summaryRef = useRef(null);
     const [documentChecklists, setDocumentChecklists] = useState([]);
+    const [documentChecklistStatus, setDocumentChecklistStatus] = useState(
+        initialDocumentChecklistStatus ?? 'idle'
+    );
     const [summaryChecklists, setSummaryChecklists] = useState([]);
 
     const toggleEditMode = useCallback(() => {
@@ -92,6 +100,25 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
     }, []);
 
     const resolvedCaseId = useMemo(() => normaliseCaseId(caseId), [caseId]);
+
+    useEffect(() => {
+        if (prefetchedDocumentChecklists != null) {
+            setDocumentChecklists(normaliseChecklistCollection(prefetchedDocumentChecklists));
+            setDocumentChecklistStatus(
+                initialDocumentChecklistStatus && initialDocumentChecklistStatus !== 'pending'
+                    ? initialDocumentChecklistStatus
+                    : 'cached'
+            );
+            return;
+        }
+
+        setDocumentChecklistStatus((currentStatus) => {
+            if (currentStatus === 'ready' && initialDocumentChecklistStatus === 'pending') {
+                return currentStatus;
+            }
+            return initialDocumentChecklistStatus ?? currentStatus;
+        });
+    }, [prefetchedDocumentChecklists, initialDocumentChecklistStatus]);
 
     const pollSummaryJob = useCallback(async (caseIdentifier, jobId) => {
         const startedAt = Date.now();
@@ -153,11 +180,13 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
         if (!summaryText.trim()) {
             setDocumentChecklists([]);
             setSummaryChecklists([]);
+            setDocumentChecklistStatus('idle');
             return [];
         }
 
         setIsLoadingSuggestions(true);
         setSuggestionsError(null);
+        setDocumentChecklistStatus('pending');
         try {
             const response = await fetchSuggestions(normaliseCaseId(overrideCaseId ?? resolvedCaseId), {
                 summaryText,
@@ -168,12 +197,14 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
             const documentChecklistPayload = response.documentChecklists ?? response.document_checklists ?? [];
             const summaryChecklistPayload = response.summaryChecklists ?? response.summary_checklists ?? [];
             setDocumentChecklists(normaliseChecklistCollection(documentChecklistPayload));
+            setDocumentChecklistStatus('ready');
             setSummaryChecklists(normaliseChecklistCollection(summaryChecklistPayload));
             setSuggestions(normalisedSuggestions);
             return normalisedSuggestions;
         } catch (error) {
             console.error('Failed to fetch AI suggestions', error);
             setSuggestionsError(error);
+            setDocumentChecklistStatus('error');
             throw error;
         } finally {
             setIsLoadingSuggestions(false);
@@ -196,6 +227,7 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
         suggestionsError,
         summaryRef,
         documentChecklists,
+        documentChecklistStatus,
         summaryChecklists,
         caseId: resolvedCaseId
     }), [
@@ -211,6 +243,7 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
         toggleEditMode,
         isLoadingSuggestions,
         documentChecklists,
+        documentChecklistStatus,
         summaryChecklists,
         resolvedCaseId
     ]);

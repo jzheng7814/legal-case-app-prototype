@@ -10,9 +10,11 @@ const useDocumentsStore = ({ caseId = DEFAULT_CASE_ID, initialUploads = [] } = {
     const [currentCaseId, setCurrentCaseId] = useState(normaliseCaseId(caseId));
     const [remoteDocuments, setRemoteDocuments] = useState([]);
     const [uploadedDocuments, setUploadedDocuments] = useState(initialUploads);
-    const [selectedDocument, setSelectedDocument] = useState('');
+    const [selectedDocument, setSelectedDocument] = useState(null);
     const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
     const [lastError, setLastError] = useState(null);
+    const [documentChecklists, setDocumentChecklists] = useState(null);
+    const [documentChecklistStatus, setDocumentChecklistStatus] = useState('idle');
     const documentRef = useRef(null);
 
     const combinedDocuments = useMemo(
@@ -24,22 +26,35 @@ const useDocumentsStore = ({ caseId = DEFAULT_CASE_ID, initialUploads = [] } = {
         const resolvedCaseId = normaliseCaseId(requestedCaseId);
         setIsLoadingDocuments(true);
         setLastError(null);
+        setDocumentChecklists(null);
+        setDocumentChecklistStatus('pending');
 
         try {
-            const loadedDocs = await loadCaseDocuments(resolvedCaseId);
+            const { documents: loadedDocs, documentChecklists: prefetchedChecklists, checklistStatus } =
+                await loadCaseDocuments(resolvedCaseId);
             setRemoteDocuments(loadedDocs);
             setCurrentCaseId(resolvedCaseId);
+            setDocumentChecklists(prefetchedChecklists ?? null);
+            setDocumentChecklistStatus(checklistStatus ?? (loadedDocs.length > 0 ? 'ready' : 'empty'));
         } catch (error) {
             console.error('Failed to load documents from backend, falling back to public assets.', error);
             setLastError(error);
             try {
-                const fallbackDocs = await loadDocumentsFromPublic();
+                const {
+                    documents: fallbackDocs,
+                    documentChecklists: prefetchedChecklists,
+                    checklistStatus
+                } = await loadDocumentsFromPublic();
                 setRemoteDocuments(fallbackDocs);
                 setCurrentCaseId(resolvedCaseId);
+                setDocumentChecklists(prefetchedChecklists ?? null);
+                setDocumentChecklistStatus(checklistStatus ?? (fallbackDocs.length > 0 ? 'fallback' : 'empty'));
             } catch (fallbackError) {
                 console.error('Fallback document loading failed', fallbackError);
                 setRemoteDocuments([]);
                 setLastError(fallbackError);
+                setDocumentChecklists(null);
+                setDocumentChecklistStatus('error');
             }
         } finally {
             setIsLoadingDocuments(false);
@@ -60,11 +75,75 @@ const useDocumentsStore = ({ caseId = DEFAULT_CASE_ID, initialUploads = [] } = {
     }, [currentCaseId, loadDocuments]);
 
     useEffect(() => {
+        if (documentChecklistStatus !== 'pending') {
+            return undefined;
+        }
+
+        let cancelled = false;
+        const POLL_INTERVAL_MS = 2000;
+
+        let pollTimeoutId = null;
+
+        const pollForChecklists = async () => {
+            try {
+                const {
+                    documents: loadedDocs,
+                    documentChecklists: prefetchedChecklists,
+                    checklistStatus
+                } = await loadCaseDocuments(currentCaseId);
+                if (cancelled) {
+                    return;
+                }
+
+                if (Array.isArray(loadedDocs) && loadedDocs.length) {
+                    setRemoteDocuments(loadedDocs);
+                }
+
+                if (prefetchedChecklists) {
+                    setDocumentChecklists(prefetchedChecklists);
+                    setDocumentChecklistStatus(checklistStatus ?? 'ready');
+                    return;
+                }
+
+                if (checklistStatus && checklistStatus !== 'pending') {
+                    setDocumentChecklistStatus(checklistStatus);
+                    return;
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    console.error('Checklist polling failed', error);
+                }
+            }
+
+            if (!cancelled) {
+                scheduleNext();
+            }
+        };
+
+        const scheduleNext = () => {
+            if (pollTimeoutId) {
+                window.clearTimeout(pollTimeoutId);
+            }
+            pollTimeoutId = window.setTimeout(pollForChecklists, POLL_INTERVAL_MS);
+        };
+
+        scheduleNext();
+        pollForChecklists();
+
+        return () => {
+            cancelled = true;
+            if (pollTimeoutId) {
+                window.clearTimeout(pollTimeoutId);
+            }
+        };
+    }, [currentCaseId, documentChecklistStatus]);
+
+    useEffect(() => {
         setSelectedDocument((current) => {
-            if (current && combinedDocuments.some((doc) => doc.id === current)) {
+            if (current != null && combinedDocuments.some((doc) => doc.id === current)) {
                 return current;
             }
-            return combinedDocuments[0]?.id || '';
+            return combinedDocuments.length > 0 ? combinedDocuments[0].id : null;
         });
     }, [combinedDocuments]);
 
@@ -96,7 +175,9 @@ const useDocumentsStore = ({ caseId = DEFAULT_CASE_ID, initialUploads = [] } = {
         uploadedDocuments,
         setUploadedDocuments,
         remoteDocuments,
-        lastError
+        lastError,
+        documentChecklists,
+        documentChecklistStatus
     }), [
         combinedDocuments,
         currentCaseId,
@@ -106,7 +187,9 @@ const useDocumentsStore = ({ caseId = DEFAULT_CASE_ID, initialUploads = [] } = {
         remoteDocuments,
         selectedDocument,
         uploadedDocuments,
-        lastError
+        lastError,
+        documentChecklists,
+        documentChecklistStatus
     ]);
 
     return value;

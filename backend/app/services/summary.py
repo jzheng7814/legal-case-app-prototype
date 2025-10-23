@@ -34,13 +34,16 @@ async def _run_summary_job(job_id: str, case_id: str, request: SummaryRequest) -
         compiled_context = []
         for document in request.documents:
             if document.include_full_text and document.content:
-                compiled_context.append((document.id, document.content))
+                title = document.title or document.alias or document.id
+                compiled_context.append((document.id, title, document.content))
             else:
                 doc = get_document(case_id, document.id)
-                compiled_context.append((doc.id, doc.content))
+                title = document.title or document.alias or doc.title or doc.id
+                compiled_context.append((doc.id, title, doc.content))
 
         merged_corpus = "\n\n".join(
-            f"Document: {doc_id}\n{textwrap.shorten(text, width=5000, placeholder=' …')}" for doc_id, text in compiled_context
+            f"Document {doc_id} — {doc_title}\n{textwrap.shorten(text, width=5000, placeholder=' …')}"
+            for doc_id, doc_title, text in compiled_context
         )
 
         instruction_block = request.instructions or (

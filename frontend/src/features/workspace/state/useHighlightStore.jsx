@@ -236,7 +236,7 @@ const useHighlightStore = ({ summary, documents }) => {
                     chatHelpersRef.current.addContextEntry({
                         type: 'document-selection',
                         content: selectedDocumentText,
-                        source: currentDoc ? currentDoc.name : 'Unknown Document',
+                        source: currentDoc ? currentDoc.title : 'Unknown Document',
                         documentId: documents.selectedDocument,
                         range: selectedDocumentRange
                     });
@@ -413,14 +413,18 @@ const useHighlightStore = ({ summary, documents }) => {
         }
 
         if (contextItem.type === 'document-selection' && contextItem.range) {
-            const targetDocumentId = contextItem.documentId || documents.selectedDocument;
+            const targetDocumentId = contextItem.documentId ?? documents.selectedDocument;
             const highlightPayload = {
                 type: 'document',
                 range: contextItem.range,
                 documentId: targetDocumentId,
                 timestamp: Date.now()
             };
-            if (targetDocumentId && targetDocumentId !== documents.selectedDocument) {
+            if (
+                targetDocumentId != null &&
+                targetDocumentId !== documents.selectedDocument &&
+                documents.documents.some((doc) => doc.id === targetDocumentId)
+            ) {
                 setPendingHighlight(highlightPayload);
                 documents.setSelectedDocument(targetDocumentId);
             } else {
@@ -445,7 +449,7 @@ const useHighlightStore = ({ summary, documents }) => {
             return;
         }
 
-        if (type === 'document' && documentId && documentId !== documents.selectedDocument) {
+        if (type === 'document' && documentId != null && documentId !== documents.selectedDocument) {
             return;
         }
 

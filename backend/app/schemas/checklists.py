@@ -2,16 +2,31 @@ from __future__ import annotations
 
 from typing import List
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+
+SUMMARY_DOCUMENT_ID = -1
 
 
 class ChecklistEvidence(BaseModel):
     text: str
-    source_document: str = Field(
+    document_id: int = Field(
         ...,
-        validation_alias=AliasChoices("source_document", "sourceDocument"),
+        serialization_alias="documentId",
+        validation_alias=AliasChoices("document_id", "documentId", "source_document", "sourceDocument"),
     )
-    location: str
+    start_offset: int = Field(
+        ...,
+        ge=0,
+        serialization_alias="startOffset",
+        validation_alias=AliasChoices("start_offset", "startOffset"),
+    )
+
+    @field_validator("document_id", mode="before")
+    @classmethod
+    def _require_integer_document_id(cls, value: object) -> int:
+        if isinstance(value, int):
+            return value
+        raise TypeError("document_id must be provided as an integer")
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 

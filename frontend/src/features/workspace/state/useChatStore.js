@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createChatSession, getChatSession, sendChatMessage as sendChatMessageApi } from '../../../services/apiClient';
+import { SUMMARY_DOCUMENT_ID } from '../constants';
 
 const mapMessagesToUi = (messages = []) =>
     messages.map((message) => ({
@@ -8,10 +9,36 @@ const mapMessagesToUi = (messages = []) =>
         content: message.content
     }));
 
+const toDocumentId = (value) => {
+    if (value == null) {
+        return null;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return null;
+        }
+        const lowered = trimmed.toLowerCase();
+        if (lowered === 'summary') {
+            return SUMMARY_DOCUMENT_ID;
+        }
+        if (lowered.startsWith('document ')) {
+            const parsed = Number.parseInt(trimmed.slice(9).trim(), 10);
+            return Number.isNaN(parsed) ? null : parsed;
+        }
+        const parsed = Number.parseInt(trimmed, 10);
+        return Number.isNaN(parsed) ? null : parsed;
+    }
+    return null;
+};
+
 const buildContextPayload = (contextItems = []) =>
     contextItems.map((item) => ({
         type: item.type,
-        document_id: item.documentId || item.source || null,
+        document_id: toDocumentId(item.documentId),
         highlight_text: item.content || item.highlight || null,
         summary_snippet: item.summarySnippet || null
     }));
@@ -82,8 +109,24 @@ const useChatStore = ({ summary, documents, highlight }) => {
     }, [currentChatId]);
 
     const addContextEntry = useCallback((entry) => {
-        setChatContext((previous) => [...previous, entry]);
+        if (!entry) {
+            return;
+        }
+        const normalizedEntry =
+            entry.type === 'document-selection'
+                ? { ...entry, documentId: toDocumentId(entry.documentId) }
+                : entry;
+        setChatContext((previous) => [...previous, normalizedEntry]);
     }, []);
+
+    const documentLabels = useMemo(() => {
+        const mapping = {};
+        (documents.documents || []).forEach((doc) => {
+            mapping[doc.id] = doc.title || doc.name || doc.id;
+        });
+        mapping[SUMMARY_DOCUMENT_ID] = 'Summary';
+        return mapping;
+    }, [documents.documents]);
 
     const addChecklistContext = useCallback(({ itemName, value, source, evidence }) => {
         const trimmedValue = value?.trim();
@@ -95,9 +138,27 @@ const useChatStore = ({ summary, documents, highlight }) => {
         const evidenceLines = (evidence || [])
             .filter((entry) => entry?.text)
             .map((entry) => {
-                const docLabel = entry.source_document || entry.sourceDocument || 'Document';
-                const locationLabel = entry.location ? ` (${entry.location})` : '';
-                return `${docLabel}${locationLabel}: ${entry.text}`;
+                const targetId = toDocumentId(entry.documentId ?? entry.document_id);
+                const baseLabel = targetId === SUMMARY_DOCUMENT_ID
+                    ? 'Summary'
+                    : documentLabels[targetId] || (targetId != null ? `Document ${targetId}` : 'Document');
+                const docIdLabel = targetId != null && targetId !== SUMMARY_DOCUMENT_ID ? ` (ID ${targetId})` : '';
+                const rawStart = entry.startOffset ?? entry.start_offset ?? null;
+                const textLength = typeof entry.text === 'string' ? entry.text.length : null;
+                const startOffset =
+                    typeof rawStart === 'number'
+                        ? rawStart
+                        : rawStart != null
+                            ? Number.parseInt(rawStart, 10)
+                            : null;
+                const endOffset =
+                    startOffset != null && Number.isFinite(textLength)
+                        ? startOffset + textLength
+                        : null;
+                const offsetsProvided =
+                    startOffset != null && endOffset != null && endOffset > startOffset;
+                const offsetLabel = offsetsProvided ? ` [${startOffset}-${endOffset}]` : '';
+                return `${baseLabel}${docIdLabel}${offsetLabel}: ${entry.text}`;
             });
 
         const payloadLines = [`${label}: ${trimmedValue}`];
@@ -124,7 +185,7 @@ const useChatStore = ({ summary, documents, highlight }) => {
                 }
             ];
         });
-    }, [setChatContext]);
+    }, [documentLabels, setChatContext]);
 
     const removeContextItem = useCallback((index) => {
         setChatContext((previous) => previous.filter((_, idx) => idx !== index));
@@ -139,8 +200,12 @@ const useChatStore = ({ summary, documents, highlight }) => {
                 return isRangeEqual(candidate.range, entry.range);
             }
             if (candidate.type === 'document-selection') {
+                const candidateId = toDocumentId(candidate.documentId);
+                const entryId = toDocumentId(entry.documentId);
                 return (
-                    candidate.documentId === entry.documentId &&
+                    candidateId != null &&
+                    entryId != null &&
+                    candidateId === entryId &&
                     isRangeEqual(candidate.range, entry.range)
                 );
             }
@@ -167,7 +232,7 @@ const useChatStore = ({ summary, documents, highlight }) => {
                 message,
                 summaryText: summary.summaryText,
                 context: buildContextPayload(activeContext),
-                documents: (documents.documents || []).map((doc) => ({ id: doc.id })),
+                documents: (documents.documents || []).map((doc) => ({ id: doc.id, title: doc.title })),
             };
             const response = await sendChatMessageApi(sessionId, payload);
             const summaryUpdate = response.summaryUpdate ?? response.summary_update;

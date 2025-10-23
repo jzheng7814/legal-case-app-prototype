@@ -4,24 +4,66 @@ import { fetchDocuments as fetchDocumentsFromApi } from './apiClient';
 export const DEFAULT_CASE_ID = '-1';
 
 const LEGACY_DOCUMENTS = [
-    { id: 'main-case', name: 'Johnson v. XYZ Corporation', type: 'Case File', filename: 'main-case.txt' },
-    { id: 'contract', name: 'Software Licensing Agreement', type: 'Contract', filename: 'contract.txt' },
-    { id: 'correspondence', name: 'Email Correspondence', type: 'Communications', filename: 'correspondence.txt' }
+    { id: 1, title: 'Johnson v. XYZ Corporation', type: 'Case File', filename: 'main-case.txt' },
+    { id: 2, title: 'Software Licensing Agreement', type: 'Contract', filename: 'contract.txt' },
+    { id: 3, title: 'Email Correspondence', type: 'Communications', filename: 'correspondence.txt' }
 ];
 
 export const getDefaultDocumentList = () => LEGACY_DOCUMENTS;
 
+const coerceDocumentId = (value) => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) {
+            const parsed = Number.parseInt(trimmed, 10);
+            if (!Number.isNaN(parsed)) {
+                return parsed;
+            }
+        }
+    }
+    throw new Error(`Document id "${value}" is not a valid integer identifier.`);
+};
+
+const normaliseDocument = (doc = {}) => {
+    if (!doc || typeof doc !== 'object') {
+        return doc;
+    }
+    const id = coerceDocumentId(doc.id);
+    const defaultTitle = `Document ${id}`;
+    const title = doc.title ?? doc.name ?? defaultTitle;
+    const { name, ...rest } = doc;
+    return { ...rest, id, title };
+};
+
 export const loadDocuments = async (caseId = DEFAULT_CASE_ID) => {
     try {
-        const documents = await fetchDocumentsFromApi(caseId);
-        if (Array.isArray(documents) && documents.length > 0) {
-            return documents;
+        const payload = await fetchDocumentsFromApi(caseId);
+        const fetchedDocuments = Array.isArray(payload?.documents) ? payload.documents : [];
+        if (fetchedDocuments.length > 0) {
+            return {
+                documents: fetchedDocuments.map((doc) => normaliseDocument(doc)),
+                documentChecklists: payload?.documentChecklists ?? payload?.document_checklists ?? null,
+                checklistStatus:
+                    payload?.checklistStatus ??
+                    payload?.checklist_status ??
+                    'pending'
+            };
         }
+        return {
+            documents: [],
+            documentChecklists: payload?.documentChecklists ?? payload?.document_checklists ?? null,
+            checklistStatus:
+                payload?.checklistStatus ??
+                payload?.checklist_status ??
+                'empty'
+        };
     } catch (error) {
         console.warn('Falling back to static public documents due to API error:', error);
         return loadDocumentsFromPublic();
     }
-    return loadDocumentsFromPublic();
 };
 
 export const loadDocumentsFromPublic = async () => {
@@ -47,5 +89,9 @@ export const loadDocumentsFromPublic = async () => {
         }
     }
 
-    return loadedDocs;
+    return {
+        documents: loadedDocs.map((doc) => normaliseDocument(doc)),
+        documentChecklists: null,
+        checklistStatus: loadedDocs.length > 0 ? 'fallback' : 'empty'
+    };
 };

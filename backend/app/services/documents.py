@@ -95,7 +95,7 @@ def get_document_metadata(case_id: str) -> List[DocumentMetadata]:
     return [
         DocumentMetadata(
             id=doc.id,
-            name=doc.name,
+            title=doc.title,
             type=doc.type,
             description=doc.description,
             source=doc.source,
@@ -113,11 +113,15 @@ def _load_catalog_documents(case_id: str) -> Optional[List[Document]]:
     documents: List[Document] = []
     for item in case_entry.get("documents", []):
         content = _load_document_text(item["filename"])
+        try:
+            doc_id = int(item["id"])
+        except (TypeError, ValueError, KeyError) as exc:
+            raise HTTPException(status_code=500, detail="Invalid demo document identifier") from exc
         documents.append(
             Document(
-                id=str(item["id"]),
-                name=item["name"],
-                type=item["type"],
+                id=doc_id,
+                title=item.get("title") or item.get("name") or f"Document {doc_id}",
+                type=item.get("type"),
                 description=item.get("description"),
                 source="demo",
                 content=content,
@@ -168,7 +172,20 @@ def _get_cached_documents(case_id: str) -> Optional[List[Document]]:
     if stored is None:
         return None
 
-    documents = [Document.model_validate(item) for item in stored.documents]
+    documents: List[Document] = []
+    for item in stored.documents:
+        if isinstance(item, dict):
+            working = dict(item)
+            if "title" not in working and "name" in working:
+                working["title"] = working.pop("name")
+            if "id" in working and not isinstance(working["id"], int):
+                try:
+                    working["id"] = int(str(working["id"]).strip())
+                except (TypeError, ValueError):
+                    logger.warning("Unable to coerce cached document id %r to integer for case %s.", working["id"], case_id)
+                    continue
+            item = working
+        documents.append(Document.model_validate(item))
     _remember_documents(case_id, documents)
     return _clone_documents(documents)
 

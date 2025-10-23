@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 async def generate_suggestions(case_id: str, request: SuggestionRequest) -> SuggestionResponse:
-    documents_desc = ", ".join(doc.id for doc in request.documents) or "none supplied"
+    documents_desc = ", ".join(str(doc.id) for doc in request.documents) or "none supplied"
     try:
         # Extract checklist information in parallel so we only call the expensive workflow when needed.
         document_checklists, summary_checklists = await asyncio.gather(

@@ -1,7 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Edit3, Sparkles } from 'lucide-react';
 import { useSummary, useHighlight, useDocuments, useChat } from '../state/WorkspaceProvider';
 import ChecklistPanel from './ChecklistPanel';
+import { SUMMARY_DOCUMENT_ID } from '../constants';
 
 const SummaryPanel = () => {
     const {
@@ -16,6 +17,7 @@ const SummaryPanel = () => {
         summaryRef,
         suggestionsError,
         documentChecklists,
+        documentChecklistStatus,
         summaryChecklists
     } = useSummary();
     const documents = useDocuments();
@@ -27,7 +29,8 @@ const SummaryPanel = () => {
         showTabTooltip,
         tooltipPosition,
         selectedText,
-        selectedDocumentText
+        selectedDocumentText,
+        handleContextClick
     } = useHighlight();
     const { addChecklistContext } = useChat();
     const [localError, setLocalError] = useState(null);
@@ -60,6 +63,59 @@ const SummaryPanel = () => {
     const handleAddChecklistToChat = useCallback(({ itemName, value, evidence, source }) => {
         addChecklistContext({ itemName, value, evidence, source });
     }, [addChecklistContext]);
+
+    const documentTitleLookup = useMemo(() => {
+        const map = {};
+        (documents.documents || []).forEach((doc) => {
+            map[doc.id] = doc.title || doc.id;
+        });
+        return map;
+    }, [documents.documents]);
+
+    const resolveDocumentTitle = useCallback(
+        (documentId) => {
+            if (documentId == null) {
+                return null;
+            }
+            if (documentId === SUMMARY_DOCUMENT_ID) {
+                return 'Summary';
+            }
+            const lookupKey = typeof documentId === 'number' ? documentId : Number.parseInt(documentId, 10);
+            if (Number.isNaN(lookupKey)) {
+                return null;
+            }
+            return documentTitleLookup[lookupKey] || null;
+        },
+        [documentTitleLookup]
+    );
+
+    const handleEvidenceNavigate = useCallback(
+        ({ documentId, startOffset, endOffset }) => {
+            if (startOffset == null || endOffset == null || endOffset <= startOffset) {
+                return;
+            }
+            if (documentId === SUMMARY_DOCUMENT_ID) {
+                handleContextClick({
+                    type: 'selection',
+                    range: { start: startOffset, end: endOffset }
+                });
+                return;
+            }
+            if (documentId == null) {
+                return;
+            }
+            const resolvedDocumentId = typeof documentId === 'number' ? documentId : Number.parseInt(documentId, 10);
+            if (Number.isNaN(resolvedDocumentId)) {
+                return;
+            }
+            handleContextClick({
+                type: 'document-selection',
+                documentId: resolvedDocumentId,
+                range: { start: startOffset, end: endOffset }
+            });
+        },
+        [handleContextClick]
+    );
 
     return (
         <div className="w-2/5 border-r bg-white flex flex-col overflow-hidden">
@@ -148,7 +204,10 @@ const SummaryPanel = () => {
                 <ChecklistPanel
                     summaryChecklists={summaryChecklists}
                     documentChecklists={documentChecklists}
+                    documentChecklistStatus={documentChecklistStatus}
                     onAddChecklist={handleAddChecklistToChat}
+                    onEvidenceNavigate={handleEvidenceNavigate}
+                    resolveDocumentTitle={resolveDocumentTitle}
                 />
             </div>
 

@@ -25,7 +25,11 @@ class ChatMessage(BaseModel):
 
 class ChatContextItem(BaseModel):
     type: str
-    document_id: Optional[str] = None
+    document_id: Optional[int] = Field(
+        default=None,
+        serialization_alias="documentId",
+        validation_alias=AliasChoices("document_id", "documentId"),
+    )
     summary_snippet: Optional[str] = None
     highlight_text: Optional[str] = None
     model_config = ConfigDict(extra="forbid", populate_by_name=True)

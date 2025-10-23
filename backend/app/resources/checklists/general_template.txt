@@ -1,63 +1,82 @@
-You are assisting a lawyer in extracting key information from legal case documents. You will be given multiple documents related to a legal case. Your task is to {item_description}
+You are assisting a lawyer in extracting key information from legal case documents. You will be given multiple documents related to a legal case, each identified by a unique integer document ID and title. Your task is to {item_description}
 
-# Note: 
+# Notes
 - Do not make assumptions or add information that is not presented in the documents.
-- When extracting evidence, quote the exact text from the documents.
+- When extracting evidence, quote the exact text from the documents—no edits or paraphrasing.
 - Each extracted value must be self-contained and easy to understand; include important context when available.
+- Provide your best estimate of the start offset for every evidence snippet. If you are uncertain, note that in `reasoning` but still include your estimate.
 
 # Case Documents
 {case_documents}
 
+# Evidence Procedure
+Follow these steps for every evidence snippet you include:
+1. Locate the exact text in the relevant document.
+2. Estimate the zero-based `startOffset` (inclusive). One effective approach is to add up the lengths of all paragraphs (including newline characters) before the snippet, then count characters within the paragraph containing the snippet.
+3. Confirm the location by re-copying the substring beginning at `startOffset` with the same length as the quoted text.
+4. In `reasoning`, include a short line in the format `offset_check: "<substring starting at startOffset>"` for each piece of evidence to show the snippet you verified. Quote exactly what you counted and mention if the offset is approximate.
+
 # Output Format
-Your output should be in the following JSON format—no extra keys, no prose outside of the JSON:
+Return **only** JSON in the following structure:
 
 ```
 {
-  "reasoning": "<brief analysis of the case documents and how you identified the relevant information or determined that none was present>",
+  "reasoning": "<brief analysis of the case documents and how you identified the relevant information or determined that none was present. Include one offset_check line per evidence snippet and state if any offsets are approximate.>",
   "extracted": [
     {
+      "value": "<concise statement of the extracted information>",
       "evidence": [
         {
           "text": "<verbatim snippet 1>",
-          "source_document": "<document name>",
-          "location": "<page number or section>"
-        },
-        {
-          "text": "<verbatim snippet 2 (if multiple snippets are relevant)>",
-          "source_document": "<document name>",
-          "location": "<page number or section>"
+          "documentId": <integer document id from the Case Documents section>,
+          "startOffset": <integer start offset>
         }
         // ...
-      ],
-      "value": "<extracted information from the evidence>"
+      ]
     }
     // ...
   ]
 }
 ```
 
-## Definitions of each part
-- `reasoning`: A brief analysis of the case documents and how you identified the relevant information or determined that none was present.
-- `extracted`: A list of one or more objects, each representing a distinct piece of information relevant to the checklist item. Always use a list, even if there is only one item.
-- `evidence`: A list of evidence objects, each containing:
-  - `text`: Exact text snippet copied from the case documents
-  - `source_document`: The title/name of the document where this evidence was found
-  - `location`: The page number or section identifier where the evidence appears
-- `value`: The extracted information based on the evidence.
+## Field Definitions
+- `reasoning`: Brief explanation of how the evidence supports the extracted values (or why none was found). Include `offset_check` lines to demonstrate the substrings you validated.
+- `extracted`: List of one or more extracted findings. Always return a list, even if empty.
+- `value`: Concise description of the finding supported by the evidence.
+- `evidence`: List of evidence objects backing the value. Each evidence object must include:
+  - `text`: Exact text copied from the document.
+  - `documentId`: The integer identifier of the document containing the evidence. Use the IDs exactly as listed above—no prefixes, suffixes, or labels.
+  - `startOffset`: Zero-based character offset where the evidence begins within that document's text.
 
-## Rules for the JSON schema
-1. **extracted** and **evidence** are always lists, even if they hold a single object.
-2. Copy the **text** in evidence objects exactly as it appears in the case documents—no rewriting or paraphrasing.
-3. Always include **source_document** and **location** for each piece of evidence.
-4. If the case documents contain no relevant information, output the **extracted** as an empty list:
+## Rules
+1. `extracted` and `evidence` are always lists.
+2. Copy the `text` field exactly as it appears in the documents provided above.
+3. Use the document IDs exactly as given in the case documents block. For summary evidence, use `documentId: -1`.
+4. Offsets should correspond to character positions in the plain text for that document (0-based start). Provide your best estimate even if approximate.
+5. If no relevant information is found, return `"extracted": []` and explain why in `reasoning`.
+6. Consider all supplied documents; do not stop after the first match.
+7. Keep the JSON valid—no comments or trailing commas.
 
+## Example (for illustration only)
 ```
+# Case Documents
+Document 101 — Sample Order (Court Filing)
+The court granted the motion on April 10, 2024 after reviewing the submissions.
+
+Output:
 {
-  "reasoning": "<brief analysis>",
-  "extracted": []
+  "reasoning": "Identified the dispositive ruling in Document 101. offset_check: \"granted the motion on April 10, 2024\" (approximate offset)",
+  "extracted": [
+    {
+      "value": "Court granted the motion on April 10, 2024.",
+      "evidence": [
+        {
+          "text": "granted the motion on April 10, 2024",
+          "documentId": 101,
+          "startOffset": 10
+        }
+      ]
+    }
+  ]
 }
 ```
-
-5. Extract information from all relevant documents—do not stop after finding information in just one document.
-6. Each distinct piece of information should be a separate item in the **extracted** list.
-7. If you cannot determine the specific page number or section, you may use descriptive locations like "beginning of document", "middle section", or "near the end".
