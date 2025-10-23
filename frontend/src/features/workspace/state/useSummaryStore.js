@@ -80,7 +80,7 @@ const useSummaryStore = ({
     prefetchedDocumentChecklists = null,
     documentChecklistStatus: initialDocumentChecklistStatus = 'idle'
 } = {}) => {
-    const [summaryText, setSummaryText] = useState('');
+    const [summaryText, setSummaryTextState] = useState('');
     const [isEditMode, setIsEditMode] = useState(false);
     const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
     const [summaryJobId, setSummaryJobId] = useState(null);
@@ -94,6 +94,8 @@ const useSummaryStore = ({
         initialDocumentChecklistStatus ?? 'idle'
     );
     const [summaryChecklists, setSummaryChecklists] = useState([]);
+    const [versionHistory, setVersionHistory] = useState([]);
+    const [activeVersionId, setActiveVersionId] = useState(null);
 
     const toggleEditMode = useCallback(() => {
         setIsEditMode((previous) => !previous);
@@ -119,6 +121,55 @@ const useSummaryStore = ({
             return initialDocumentChecklistStatus ?? currentStatus;
         });
     }, [prefetchedDocumentChecklists, initialDocumentChecklistStatus]);
+
+    const draftSummaryRef = useRef(null);
+
+    const setSummaryText = useCallback((value) => {
+        setActiveVersionId(null);
+        draftSummaryRef.current = null;
+        if (typeof value === 'function') {
+            setSummaryTextState((previous) => value(previous));
+            return;
+        }
+        setSummaryTextState(value);
+    }, []);
+
+    const saveCurrentVersion = useCallback(() => {
+        const timestamp = new Date();
+        const versionId = `${timestamp.getTime().toString()}-${Math.random().toString(36).slice(2, 8)}`;
+        const entry = {
+            id: versionId,
+            savedAt: timestamp.toISOString(),
+            summaryText
+        };
+        setVersionHistory((previous) => [entry, ...previous]);
+        setActiveVersionId(versionId);
+        draftSummaryRef.current = null;
+        return entry;
+    }, [summaryText]);
+
+    const selectVersion = useCallback((versionId) => {
+        if (!versionId) {
+            if (draftSummaryRef.current != null) {
+                setSummaryTextState(draftSummaryRef.current);
+            }
+            draftSummaryRef.current = null;
+            setActiveVersionId(null);
+            return;
+        }
+
+        const targetVersion = versionHistory.find((entry) => entry.id === versionId);
+        if (!targetVersion) {
+            return;
+        }
+
+        if (activeVersionId == null) {
+            draftSummaryRef.current = summaryText;
+        }
+
+        setActiveVersionId(versionId);
+        setSummaryTextState(targetVersion.summaryText);
+    }, [activeVersionId, summaryText, versionHistory]);
 
     const pollSummaryJob = useCallback(async (caseIdentifier, jobId) => {
         const startedAt = Date.now();
@@ -229,6 +280,10 @@ const useSummaryStore = ({
         documentChecklists,
         documentChecklistStatus,
         summaryChecklists,
+        versionHistory,
+        activeVersionId,
+        saveCurrentVersion,
+        selectVersion,
         caseId: resolvedCaseId
     }), [
         generateAISummary,
@@ -245,6 +300,10 @@ const useSummaryStore = ({
         documentChecklists,
         documentChecklistStatus,
         summaryChecklists,
+        versionHistory,
+        activeVersionId,
+        saveCurrentVersion,
+        selectVersion,
         resolvedCaseId
     ]);
 

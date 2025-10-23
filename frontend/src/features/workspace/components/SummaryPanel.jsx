@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Edit3, Sparkles } from 'lucide-react';
+import { Edit3, Sparkles, Plus } from 'lucide-react';
 import { useSummary, useHighlight, useDocuments, useChat } from '../state/WorkspaceProvider';
 import ChecklistPanel from './ChecklistPanel';
 import { SUMMARY_DOCUMENT_ID } from '../constants';
@@ -18,7 +18,11 @@ const SummaryPanel = () => {
         suggestionsError,
         documentChecklists,
         documentChecklistStatus,
-        summaryChecklists
+        summaryChecklists,
+        versionHistory,
+        activeVersionId,
+        saveCurrentVersion,
+        selectVersion
     } = useSummary();
     const documents = useDocuments();
     const activeCaseId = documents.caseId;
@@ -64,6 +68,10 @@ const SummaryPanel = () => {
         addChecklistContext({ itemName, value, evidence, source });
     }, [addChecklistContext]);
 
+    const handleVersionSelect = useCallback((event) => {
+        selectVersion(event.target.value);
+    }, [selectVersion]);
+
     const documentTitleLookup = useMemo(() => {
         const map = {};
         (documents.documents || []).forEach((doc) => {
@@ -71,6 +79,15 @@ const SummaryPanel = () => {
         });
         return map;
     }, [documents.documents]);
+
+    const versionOptions = useMemo(() => versionHistory.map((entry) => {
+        const date = entry.savedAt ? new Date(entry.savedAt) : null;
+        const hasValidDate = date && !Number.isNaN(date.getTime());
+        return {
+            id: entry.id,
+            label: hasValidDate ? date.toLocaleString() : entry.savedAt || entry.id
+        };
+    }), [versionHistory]);
 
     const resolveDocumentTitle = useCallback(
         (documentId) => {
@@ -119,7 +136,7 @@ const SummaryPanel = () => {
 
     return (
         <div className="w-2/5 border-r bg-white flex flex-col overflow-hidden">
-            <div className="border-b p-4">
+            <div className="border-b p-4 space-y-3">
                 <div className="flex items-center justify-between">
                     <h2 className="text-lg font-semibold">Case Summary</h2>
                     <div className="flex items-center space-x-2">
@@ -158,6 +175,27 @@ const SummaryPanel = () => {
                             {isEditMode ? 'Exit Edit' : 'Edit'}
                         </button>
                     </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                    <select
+                        value={activeVersionId || ''}
+                        onChange={handleVersionSelect}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">Current Draft</option>
+                        {versionOptions.map((version) => (
+                            <option key={version.id} value={version.id}>
+                                {version.label}
+                            </option>
+                        ))}
+                    </select>
+                    <button
+                        onClick={saveCurrentVersion}
+                        className="p-2 text-blue-600 hover:text-blue-800"
+                        title="Save current version"
+                    >
+                        <Plus className="h-4 w-4" />
+                    </button>
                 </div>
                 {(localError || suggestionsError) && (
                     <div className="mt-2 text-xs text-red-600">
