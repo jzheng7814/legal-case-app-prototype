@@ -1,8 +1,10 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Edit3, Sparkles, Plus } from 'lucide-react';
 import { useSummary, useHighlight, useDocuments, useChat } from '../state/WorkspaceProvider';
 import ChecklistPanel from './ChecklistPanel';
 import { SUMMARY_DOCUMENT_ID } from '../constants';
+import SummaryPatchPanel from './SummaryPatchPanel';
+import { createRangeFromOffsets, computeOverlayRects, scrollRangeIntoView } from '../../../utils/selection';
 
 const SummaryPanel = () => {
     const {
@@ -22,7 +24,10 @@ const SummaryPanel = () => {
         versionHistory,
         activeVersionId,
         saveCurrentVersion,
-        selectVersion
+        selectVersion,
+        patchAction,
+        activePatchId,
+        clearPatchPreview
     } = useSummary();
     const documents = useDocuments();
     const activeCaseId = documents.caseId;
@@ -38,6 +43,9 @@ const SummaryPanel = () => {
     } = useHighlight();
     const { addChecklistContext } = useChat();
     const [localError, setLocalError] = useState(null);
+    const [patchOverlayRects, setPatchOverlayRects] = useState([]);
+    const [patchOverlayMeta, setPatchOverlayMeta] = useState(null);
+    const patchPanelRef = useRef(null);
 
     const canGenerateSummary = !isEditMode;
 
@@ -54,6 +62,83 @@ const SummaryPanel = () => {
             setLocalError(error.message || 'Failed to generate summary.');
         }
     }, [activeCaseId, contextDocuments, generateAISummary, refreshSuggestions]);
+
+    useEffect(() => {
+        if (isEditMode || (patchAction && patchAction.isStale)) {
+            clearPatchPreview();
+        }
+    }, [isEditMode, patchAction, clearPatchPreview]);
+
+    useEffect(() => {
+        if (!activePatchId || !patchAction || patchAction.isStale || !summaryRef.current) {
+            setPatchOverlayRects([]);
+            setPatchOverlayMeta(null);
+            return;
+        }
+        const target = patchAction.patches.find((patch) => patch.id === activePatchId && patch.status === 'applied');
+        if (!target) {
+            setPatchOverlayRects([]);
+            setPatchOverlayMeta(null);
+            return;
+        }
+        const container = summaryRef.current;
+        const resolveEnd = () => {
+            if (target.currentEnd > target.currentStart) {
+                return target.currentEnd;
+            }
+            if (summaryText.length > target.currentStart) {
+                return target.currentStart + 1;
+            }
+            return target.currentStart;
+        };
+        const highlightEnd = resolveEnd();
+
+        const updateRects = () => {
+            const range = createRangeFromOffsets(container, target.currentStart, highlightEnd);
+            if (!range) {
+                setPatchOverlayRects([]);
+                return;
+            }
+            scrollRangeIntoView(container, range);
+            setPatchOverlayRects(computeOverlayRects(container, range));
+        };
+
+        updateRects();
+        setPatchOverlayMeta({ deletedText: target.deletedText, insertText: target.insertText });
+
+        const handleScroll = () => requestAnimationFrame(updateRects);
+        container.addEventListener('scroll', handleScroll);
+        window.addEventListener('resize', handleScroll);
+        return () => {
+            container.removeEventListener('scroll', handleScroll);
+            window.removeEventListener('resize', handleScroll);
+        };
+    }, [activePatchId, patchAction, summaryRef, summaryText.length]);
+
+    useEffect(() => {
+        if (typeof document === 'undefined') {
+            return undefined;
+        }
+        if (!activePatchId) {
+            return undefined;
+        }
+        const handleDocumentClick = (event) => {
+            if (!summaryRef.current) {
+                return;
+            }
+            if (summaryRef.current.contains(event.target)) {
+                return;
+            }
+            if (patchPanelRef.current && patchPanelRef.current.contains(event.target)) {
+                return;
+            }
+            clearPatchPreview();
+        };
+        document.addEventListener('mousedown', handleDocumentClick);
+        return () => {
+            document.removeEventListener('mousedown', handleDocumentClick);
+        };
+    }, [activePatchId, clearPatchPreview, summaryRef]);
 
     const handleRefreshSuggestions = useCallback(async () => {
         setLocalError(null);
@@ -204,6 +289,8 @@ const SummaryPanel = () => {
                 )}
             </div>
 
+            <SummaryPatchPanel panelRef={patchPanelRef} />
+
             <div className="flex-1 flex flex-col min-h-0">
                 <div className="flex-1 p-4 flex flex-col min-h-0">
                     <div className="relative flex-1 min-h-0">
@@ -235,6 +322,29 @@ const SummaryPanel = () => {
                                         }}
                                     />
                                 ))}
+                                {patchOverlayRects.map((rect, index) => (
+                                    <span
+                                        key={`patch-preview-${index}`}
+                                        className="pointer-events-none absolute z-30 rounded-sm bg-blue-200/60"
+                                        style={{
+                                            top: rect.top,
+                                            left: rect.left,
+                                            width: rect.width,
+                                            height: rect.height
+                                        }}
+                                    />
+                                ))}
+                                {patchOverlayMeta?.deletedText && patchOverlayRects[0] && (
+                                    <div
+                                        className="pointer-events-none absolute z-40 rounded bg-white/80 px-2 py-0.5 text-xs font-semibold text-red-700 line-through"
+                                        style={{
+                                            top: Math.max(0, patchOverlayRects[0].top - 20),
+                                            left: patchOverlayRects[0].left
+                                        }}
+                                    >
+                                        {patchOverlayMeta.deletedText || '(whitespace)'}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

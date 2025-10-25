@@ -75,6 +75,78 @@ const normaliseChecklistCollection = (collection) => {
     return [];
 };
 
+const toPositiveInteger = (value, defaultValue = 0) => {
+    const parsed = typeof value === 'number' ? value : Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return defaultValue;
+    }
+    return parsed;
+};
+
+const normalisePatchPayload = (patch = {}) => ({
+    startIndex: toPositiveInteger(patch.startIndex ?? patch.start_index, 0),
+    deleteCount: toPositiveInteger(patch.deleteCount ?? patch.delete_count, 0),
+    insertText: typeof patch.insertText === 'string'
+        ? patch.insertText
+        : typeof patch.insert_text === 'string'
+            ? patch.insert_text
+            : ''
+});
+
+const applyPatchesToBase = (baseSummary, patches) => {
+    if (!baseSummary || !patches?.length) {
+        return baseSummary ?? '';
+    }
+    let cursor = 0;
+    let output = '';
+    patches.forEach((patch) => {
+        const { startIndex, deleteCount, insertText, status } = patch;
+        const boundedStart = Math.min(startIndex, baseSummary.length);
+        output += baseSummary.slice(cursor, boundedStart);
+        if (status === 'applied') {
+            output += insertText;
+            cursor = boundedStart + deleteCount;
+        } else {
+            cursor = boundedStart;
+        }
+    });
+    output += baseSummary.slice(cursor);
+    return output;
+};
+
+const recomputePatchPositions = (baseSummary, patches) => {
+    if (!patches) {
+        return [];
+    }
+    let delta = 0;
+    return patches.map((patch) => {
+        const currentStart = patch.startIndex + delta;
+        const appliedLength = patch.status === 'applied'
+            ? patch.insertText.length
+            : patch.deleteCount;
+        const currentEnd = currentStart + appliedLength;
+        const nextDelta = patch.status === 'applied'
+            ? delta + (patch.insertText.length - patch.deleteCount)
+            : delta;
+        delta = nextDelta;
+        return {
+            ...patch,
+            currentStart,
+            currentEnd
+        };
+    });
+};
+
+const hydratePatchAction = (action) => {
+    if (!action) {
+        return null;
+    }
+    return {
+        ...action,
+        patches: recomputePatchPositions(action.baseSummary, action.patches)
+    };
+};
+
 const useSummaryStore = ({
     caseId = DEFAULT_CASE_ID,
     prefetchedDocumentChecklists = null,
@@ -96,6 +168,8 @@ const useSummaryStore = ({
     const [summaryChecklists, setSummaryChecklists] = useState([]);
     const [versionHistory, setVersionHistory] = useState([]);
     const [activeVersionId, setActiveVersionId] = useState(null);
+    const [patchAction, setPatchAction] = useState(null);
+    const [activePatchId, setActivePatchId] = useState(null);
 
     const toggleEditMode = useCallback(() => {
         setIsEditMode((previous) => !previous);
@@ -124,15 +198,24 @@ const useSummaryStore = ({
 
     const draftSummaryRef = useRef(null);
 
-    const setSummaryText = useCallback((value) => {
+    const setSummaryText = useCallback((value, options = {}) => {
+        const { skipPatchInvalidation = false } = options;
         setActiveVersionId(null);
         draftSummaryRef.current = null;
-        if (typeof value === 'function') {
-            setSummaryTextState((previous) => value(previous));
-            return;
-        }
-        setSummaryTextState(value);
+        setSummaryTextState((previous) => {
+            const nextValue = typeof value === 'function' ? value(previous) : value;
+            if (!skipPatchInvalidation && nextValue !== previous) {
+                setPatchAction((current) => (current && !current.isStale ? { ...current, isStale: true } : current));
+                setActivePatchId(null);
+            }
+            return nextValue;
+        });
     }, []);
+
+    const summaryTextRef = useRef('');
+    useEffect(() => {
+        summaryTextRef.current = summaryText;
+    }, [summaryText]);
 
     const saveCurrentVersion = useCallback(() => {
         const timestamp = new Date();
@@ -171,6 +254,122 @@ const useSummaryStore = ({
         setSummaryTextState(targetVersion.summaryText);
     }, [activeVersionId, summaryText, versionHistory]);
 
+    const applyAiSummaryUpdate = useCallback((nextSummary, patches = []) => {
+        const baseSummary = summaryTextRef.current ?? '';
+        const normalisedPatches = Array.isArray(patches)
+            ? patches
+                .map(normalisePatchPayload)
+                .filter((entry) => entry.deleteCount > 0 || entry.insertText.length > 0)
+            : [];
+
+        if (normalisedPatches.length === 0) {
+            setPatchAction(null);
+            setActivePatchId(null);
+            setSummaryText(nextSummary ?? '', { skipPatchInvalidation: true });
+            return;
+        }
+
+        const actionId = `ai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        const preparedAction = {
+            id: actionId,
+            createdAt: new Date().toISOString(),
+            baseSummary,
+            isStale: false,
+            patches: normalisedPatches.map((patch, index) => ({
+                ...patch,
+                id: `${actionId}-${index}`,
+                deletedText: baseSummary.slice(patch.startIndex, patch.startIndex + patch.deleteCount),
+                status: 'applied'
+            }))
+        };
+
+        setPatchAction(hydratePatchAction(preparedAction));
+        setActivePatchId(null);
+        setSummaryText(nextSummary ?? '', { skipPatchInvalidation: true });
+    }, [setSummaryText]);
+
+    const revertPatch = useCallback((patchId) => {
+        setPatchAction((current) => {
+            if (!current || current.isStale) {
+                return current;
+            }
+            const index = current.patches.findIndex((patch) => patch.id === patchId);
+            if (index === -1 || current.patches[index].status !== 'applied') {
+                return current;
+            }
+            const updated = {
+                ...current,
+                patches: current.patches.map((patch, idx) =>
+                    idx === index ? { ...patch, status: 'reverted' } : patch
+                )
+            };
+            const hydrated = hydratePatchAction(updated);
+            const recomposed = applyPatchesToBase(hydrated.baseSummary, hydrated.patches);
+            setSummaryText(recomposed, { skipPatchInvalidation: true });
+            if (activePatchId === patchId) {
+                setActivePatchId(null);
+            }
+            return hydrated;
+        });
+    }, [activePatchId, setSummaryText]);
+
+    const revertAllPatches = useCallback(() => {
+        setPatchAction((current) => {
+            if (!current || current.isStale) {
+                return current;
+            }
+            if (!current.patches.some((patch) => patch.status === 'applied')) {
+                return current;
+            }
+            const updated = {
+                ...current,
+                patches: current.patches.map((patch) => ({ ...patch, status: 'reverted' }))
+            };
+            setSummaryText(updated.baseSummary, { skipPatchInvalidation: true });
+            setActivePatchId(null);
+            return hydratePatchAction(updated);
+        });
+    }, [setSummaryText]);
+
+    const previewPatch = useCallback((patchId) => {
+        if (!patchId) {
+            setActivePatchId(null);
+            return;
+        }
+        if (!patchAction || patchAction.isStale) {
+            setActivePatchId(null);
+            return;
+        }
+        const exists = patchAction.patches.some(
+            (patch) => patch.id === patchId && patch.status === 'applied'
+        );
+        setActivePatchId(exists ? patchId : null);
+    }, [patchAction]);
+
+    const clearPatchPreview = useCallback(() => {
+        setActivePatchId(null);
+    }, []);
+
+    const dismissPatchAction = useCallback(() => {
+        setPatchAction(null);
+        setActivePatchId(null);
+    }, []);
+
+    useEffect(() => {
+        if (!patchAction || patchAction.isStale) {
+            setActivePatchId(null);
+            return;
+        }
+        if (activePatchId) {
+            const stillExists = patchAction.patches.some(
+                (patch) => patch.id === activePatchId && patch.status === 'applied'
+            );
+            if (!stillExists) {
+                setActivePatchId(null);
+            }
+        }
+    }, [activePatchId, patchAction]);
+
     const pollSummaryJob = useCallback(async (caseIdentifier, jobId) => {
         const startedAt = Date.now();
         let currentJob;
@@ -198,7 +397,6 @@ const useSummaryStore = ({
         setIsGeneratingSummary(true);
         setLastSummaryError(null);
         setSuggestions([]);
-        setDocumentChecklists([]);
         setSummaryChecklists([]);
 
         try {
@@ -229,7 +427,6 @@ const useSummaryStore = ({
         { caseId: overrideCaseId, documents = [], maxSuggestions = 6 } = {}
     ) => {
         if (!summaryText.trim()) {
-            setDocumentChecklists([]);
             setSummaryChecklists([]);
             setDocumentChecklistStatus('idle');
             return [];
@@ -284,6 +481,14 @@ const useSummaryStore = ({
         activeVersionId,
         saveCurrentVersion,
         selectVersion,
+        patchAction,
+        activePatchId,
+        applyAiSummaryUpdate,
+        revertPatch,
+        revertAllPatches,
+        previewPatch,
+        clearPatchPreview,
+        dismissPatchAction,
         caseId: resolvedCaseId
     }), [
         generateAISummary,
@@ -304,6 +509,14 @@ const useSummaryStore = ({
         activeVersionId,
         saveCurrentVersion,
         selectVersion,
+        patchAction,
+        activePatchId,
+        applyAiSummaryUpdate,
+        revertPatch,
+        revertAllPatches,
+        previewPatch,
+        clearPatchPreview,
+        dismissPatchAction,
         resolvedCaseId
     ]);
 

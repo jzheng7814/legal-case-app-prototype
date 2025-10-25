@@ -4,8 +4,8 @@ import asyncio
 import json
 import logging
 import re
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import httpx
 from openai import AsyncOpenAI
@@ -28,6 +28,21 @@ class LLMMessage:
 class LLMResult:
     text: str
     raw: Dict[str, Any] | None = None
+    tool_outputs: List["LLMToolHandlerResult"] = field(default_factory=list)
+
+
+@dataclass
+class LLMToolCall:
+    name: str
+    arguments: str
+    call_id: str
+
+
+@dataclass
+class LLMToolHandlerResult:
+    call: LLMToolCall
+    output: str
+    metadata: Dict[str, Any] | None = None
 
 
 def _strip_reasoning_tokens(text: str) -> str:
@@ -72,6 +87,16 @@ class LLMBackend:
         system: Optional[str] = None,
     ) -> LLMResult:
         raise NotImplementedError
+
+    async def chat_with_tools(
+        self,
+        messages: List[LLMMessage],
+        *,
+        system: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_handler: Optional[Callable[[LLMToolCall], Awaitable[LLMToolHandlerResult]]] = None,
+    ) -> LLMResult:
+        return await self.chat(messages, system=system)
 
     async def aclose(self) -> None:
         return None
@@ -277,6 +302,70 @@ class OpenAIBackend(LLMBackend):
         )
         text = _strip_reasoning_tokens(_collect_openai_text(response)).strip()
         return LLMResult(text=text, raw=response.model_dump())
+
+    async def chat_with_tools(
+        self,
+        messages: List[LLMMessage],
+        *,
+        system: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_handler: Optional[Callable[[LLMToolCall], Awaitable[LLMToolHandlerResult]]] = None,
+    ) -> LLMResult:
+        if not tools or tool_handler is None:
+            return await self.chat(messages, system=system)
+
+        conversation: List[Any] = []
+        if system:
+            conversation.append({"role": "system", "content": system})
+        conversation.extend({"role": message.role, "content": message.content} for message in messages)
+
+        handler_results: List[LLMToolHandlerResult] = []
+
+        response = await self._client.responses.create(
+            model=self._conversation_model,
+            input=conversation,
+            tools=tools,
+            max_output_tokens=self._defaults.max_output_tokens,
+            reasoning={
+                "effort": self._reasoning_effort,
+            },
+        )
+        conversation.extend(response.output or [])
+
+        while True:
+            tool_calls = [
+                item
+                for item in (response.output or [])
+                if getattr(item, "type", None) == "function_call"
+            ]
+            if not tool_calls:
+                text = _strip_reasoning_tokens(_collect_openai_text(response)).strip()
+                return LLMResult(text=text, raw=response.model_dump(), tool_outputs=handler_results)
+
+            for call in tool_calls:
+                llm_call = LLMToolCall(name=call.name, arguments=call.arguments, call_id=call.call_id)
+                handler_result = await tool_handler(llm_call)
+                output_payload = handler_result.output or "{}"
+                handler_result.output = output_payload
+                handler_results.append(handler_result)
+                conversation.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": call.call_id,
+                        "output": output_payload,
+                    }
+                )
+
+            response = await self._client.responses.create(
+                model=self._conversation_model,
+                input=conversation,
+                tools=tools,
+                max_output_tokens=self._defaults.max_output_tokens,
+                reasoning={
+                    "effort": self._reasoning_effort,
+                },
+            )
+            conversation.extend(response.output or [])
 
     async def aclose(self) -> None:
         await self._client.close()
@@ -491,6 +580,38 @@ class LLMService:
         result = await self._backend.chat(messages, system=system)
         self._log_response("chat", getattr(result, "raw", None))
         return result.text
+
+    async def chat_with_tools(
+        self,
+        messages: List[LLMMessage],
+        *,
+        system: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_handler: Optional[Callable[[LLMToolCall], Awaitable[LLMToolHandlerResult]]] = None,
+    ) -> LLMResult:
+        preview = ""
+        if messages:
+            last = messages[-1]
+            preview = f"{last.role}: {last.content}"
+        self._log_call(
+            "chat_with_tools",
+            system=system,
+            prompt_text=preview,
+            request_payload={
+                "messages": [message.__dict__ for message in messages],
+                "system": system,
+                "tools": tools,
+            },
+            is_chat=True,
+        )
+        result = await self._backend.chat_with_tools(
+            messages,
+            system=system,
+            tools=tools,
+            tool_handler=tool_handler,
+        )
+        self._log_response("chat_with_tools", getattr(result, "raw", None))
+        return result
 
     async def shutdown(self) -> None:
         await self._backend.aclose()

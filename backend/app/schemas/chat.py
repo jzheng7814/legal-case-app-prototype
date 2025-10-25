@@ -61,6 +61,25 @@ class ChatMessageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class SummaryPatch(BaseModel):
+    start_index: int = Field(
+        ...,
+        serialization_alias="startIndex",
+        validation_alias=AliasChoices("startIndex", "start_index"),
+    )
+    delete_count: int = Field(
+        ...,
+        serialization_alias="deleteCount",
+        validation_alias=AliasChoices("deleteCount", "delete_count"),
+    )
+    insert_text: str = Field(
+        default="",
+        serialization_alias="insertText",
+        validation_alias=AliasChoices("insertText", "insert_text"),
+    )
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
 class ChatMessageResponse(BaseModel):
     session_id: str = Field(
         ...,
@@ -72,5 +91,10 @@ class ChatMessageResponse(BaseModel):
         default=None,
         serialization_alias="summaryUpdate",
         validation_alias=AliasChoices("summaryUpdate", "summary_update"),
+    )
+    summary_patches: Optional[List[SummaryPatch]] = Field(
+        default=None,
+        serialization_alias="summaryPatches",
+        validation_alias=AliasChoices("summaryPatches", "summary_patches"),
     )
     model_config = ConfigDict(extra="forbid", populate_by_name=True)

@@ -57,7 +57,7 @@ const HomeScreen = ({
                     <div className="text-center text-gray-500 mb-4">OR</div>
                     <input
                         type="text"
-                        placeholder="Enter Case ID (e.g., 3:24-cv-01234-ABC)"
+                        placeholder="Enter Case ID (e.g., -1)"
                         value={caseId}
                         onChange={(e) => onCaseIdChange(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
