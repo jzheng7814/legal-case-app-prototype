@@ -14,11 +14,16 @@ class ChecklistEvidence(BaseModel):
         serialization_alias="documentId",
         validation_alias=AliasChoices("document_id", "documentId", "source_document", "sourceDocument"),
     )
-    start_offset: int = Field(
-        ...,
+    start_offset: int | None = Field(
+        None,
         ge=0,
         serialization_alias="startOffset",
         validation_alias=AliasChoices("start_offset", "startOffset"),
+    )
+    verified: bool = Field(
+        True,
+        serialization_alias="verified",
+        validation_alias=AliasChoices("verified",),
     )
 
     @field_validator("document_id", mode="before")

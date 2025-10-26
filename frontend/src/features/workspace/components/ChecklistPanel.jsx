@@ -29,7 +29,8 @@ const resolveEvidenceMeta = (evidenceItem = {}) => {
     const startOffset = Number.isFinite(parsedStart) ? parsedStart : null;
     const endOffset =
         startOffset != null && Number.isFinite(textLength) ? startOffset + textLength : null;
-    return { documentId, startOffset, endOffset };
+    const isVerified = evidenceItem.verified !== false;
+    return { documentId, startOffset, endOffset, isVerified };
 };
 
 const ChecklistColumn = ({
@@ -97,19 +98,21 @@ const ChecklistColumn = ({
                                             {Array.isArray(entry.evidence) && entry.evidence.length > 0 && (
                                                 <ul className="mt-2 space-y-1">
                                                     {entry.evidence.map((evidenceItem, evidenceIndex) => {
-                                                        const { documentId, startOffset, endOffset } = resolveEvidenceMeta(evidenceItem);
-                                                        const canNavigate =
-                                                            typeof onEvidenceNavigate === 'function' &&
-                                                            documentId != null &&
+                                                        const { documentId, startOffset, endOffset, isVerified } = resolveEvidenceMeta(evidenceItem);
+                                                        const hasExactRange =
+                                                            isVerified &&
                                                             startOffset != null &&
                                                             endOffset != null &&
                                                             endOffset > startOffset;
+                                                        const canNavigate =
+                                                            typeof onEvidenceNavigate === 'function' &&
+                                                            documentId != null;
                                                         const docTitle =
                                                             documentId === SUMMARY_DOCUMENT_ID
                                                                 ? 'Summary'
                                                                 : resolveDocumentTitle(documentId);
                                                         const offsetLabel =
-                                                            startOffset != null && endOffset != null && endOffset > startOffset
+                                                            hasExactRange
                                                                 ? ` · chars ${startOffset}-${endOffset}`
                                                                 : '';
                                                         const resolvedLabel = docTitle
@@ -117,6 +120,12 @@ const ChecklistColumn = ({
                                                             : documentId != null
                                                                 ? `Document ${documentId}`
                                                                 : 'Document';
+                                                        const navigatePayload = {
+                                                            documentId,
+                                                            startOffset: hasExactRange ? startOffset : null,
+                                                            endOffset: hasExactRange ? endOffset : null,
+                                                            verified: isVerified
+                                                        };
                                                         return (
                                                             <li key={`${itemName}-evidence-${evidenceIndex}`} className="text-xs text-gray-600">
                                                                 <button
@@ -126,11 +135,7 @@ const ChecklistColumn = ({
                                                                         if (!canNavigate) {
                                                                             return;
                                                                         }
-                                                                        onEvidenceNavigate({
-                                                                            documentId,
-                                                                            startOffset,
-                                                                            endOffset
-                                                                        });
+                                                                        onEvidenceNavigate(navigatePayload);
                                                                     }}
                                                                     className={`w-full text-left rounded px-2 py-1 transition ${
                                                                         canNavigate
@@ -145,6 +150,11 @@ const ChecklistColumn = ({
                                                                         {resolvedLabel}
                                                                         {offsetLabel}
                                                                     </span>
+                                                                    {!isVerified && (
+                                                                        <span className="mt-0.5 block text-[11px] text-amber-600">
+                                                                            Location not auto-verified—opening the document so you can confirm manually.
+                                                                        </span>
+                                                                    )}
                                                                 </button>
                                                             </li>
                                                         );

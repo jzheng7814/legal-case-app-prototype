@@ -193,30 +193,45 @@ const SummaryPanel = () => {
 
     const handleEvidenceNavigate = useCallback(
         ({ documentId, startOffset, endOffset }) => {
-            if (startOffset == null || endOffset == null || endOffset <= startOffset) {
-                return;
-            }
-            if (documentId === SUMMARY_DOCUMENT_ID) {
+            const hasRange = startOffset != null && endOffset != null && endOffset > startOffset;
+            if (hasRange) {
+                if (documentId === SUMMARY_DOCUMENT_ID) {
+                    handleContextClick({
+                        type: 'selection',
+                        range: { start: startOffset, end: endOffset }
+                    });
+                    return;
+                }
+                if (documentId == null) {
+                    return;
+                }
+                const resolvedDocumentId = typeof documentId === 'number' ? documentId : Number.parseInt(documentId, 10);
+                if (Number.isNaN(resolvedDocumentId)) {
+                    return;
+                }
                 handleContextClick({
-                    type: 'selection',
+                    type: 'document-selection',
+                    documentId: resolvedDocumentId,
                     range: { start: startOffset, end: endOffset }
                 });
                 return;
             }
-            if (documentId == null) {
+
+            if (documentId == null || documentId === SUMMARY_DOCUMENT_ID) {
                 return;
             }
             const resolvedDocumentId = typeof documentId === 'number' ? documentId : Number.parseInt(documentId, 10);
             if (Number.isNaN(resolvedDocumentId)) {
                 return;
             }
-            handleContextClick({
-                type: 'document-selection',
-                documentId: resolvedDocumentId,
-                range: { start: startOffset, end: endOffset }
-            });
+            if (typeof documents.setSelectedDocument === 'function') {
+                documents.setSelectedDocument(resolvedDocumentId);
+            }
+            if (documents.documentRef?.current) {
+                documents.documentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+            }
         },
-        [handleContextClick]
+        [documents.documentRef, documents.setSelectedDocument, handleContextClick]
     );
 
     return (

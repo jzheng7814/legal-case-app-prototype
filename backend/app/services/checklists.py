@@ -104,6 +104,21 @@ def _build_case_documents_block(payloads: List[Dict[str, str]]) -> str:
     return "\n\n".join(blocks)
 
 
+def _build_document_catalog(payloads: List[Dict[str, str]]) -> str:
+    lines: List[str] = []
+    for payload in sorted(payloads, key=lambda item: item["id"]):
+        descriptor_parts: List[str] = []
+        if payload.get("title"):
+            descriptor_parts.append(payload["title"])
+        if payload.get("type"):
+            descriptor_parts.append(f"({payload['type']})")
+        descriptor = " ".join(part for part in descriptor_parts if part).strip()
+        if not descriptor:
+            descriptor = f"Document {payload['id']}"
+        lines.append(f"- Document {payload['id']}: {descriptor}")
+    return "\n".join(lines) if lines else "No documents were supplied."
+
+
 def _compute_documents_signature(case_id: str, payloads: List[Dict[str, str]]) -> str:
     digest = hashlib.sha256(case_id.encode("utf-8"))
     for payload in sorted(payloads, key=lambda item: item["id"]):
@@ -162,6 +177,21 @@ def _validate_evidence_offsets(
                 break
             matches.append(index)
             start = index + 1
+        if matches:
+            return matches
+
+        haystack_lower = haystack.lower()
+        needle_lower = needle.lower()
+        if haystack_lower == haystack and needle_lower == needle:
+            return matches
+
+        start = 0
+        while True:
+            index = haystack_lower.find(needle_lower, start)
+            if index == -1:
+                break
+            matches.append(index)
+            start = index + 1
         return matches
 
     def _locate_regex_match(haystack: str, needle: str) -> tuple[int, int] | None:
@@ -171,7 +201,7 @@ def _validate_evidence_offsets(
         escaped = re.escape(stripped)
         pattern = whitespace_collapse.sub(r"\\s+", escaped)
         try:
-            regex = re.compile(pattern)
+            regex = re.compile(pattern, re.IGNORECASE)
         except re.error:
             return None
         match = regex.search(haystack)
@@ -302,14 +332,24 @@ def _validate_evidence_offsets(
         )
         return absolute_start, snippet, f"fuzzy_score={final_score}"
 
+    filtered_values = []
     for extracted_item in extraction.extracted:
+        discard_value = False
         validated_evidence: List[ChecklistEvidence] = []
         for evidence in extracted_item.evidence:
             doc_text = text_lookup.get(evidence.document_id)
             if doc_text is None:
-                validated_evidence.append(evidence)
-                continue
+                logger.warning(
+                    "Discarding checklist value due to missing document (item=%s, document_id=%s)",
+                    item_name,
+                    evidence.document_id,
+                )
+                discard_value = True
+                break
 
+            evidence.verified = False
+
+            target_offset = evidence.start_offset if evidence.start_offset is not None else 0
             matches = _find_exact_matches(doc_text, evidence.text)
             replacement_text = evidence.text
             chosen_start: int | None = None
@@ -319,11 +359,10 @@ def _validate_evidence_offsets(
                 if len(matches) == 1:
                     chosen_start = matches[0]
                 else:
-                    target = evidence.start_offset
                     chosen_start = min(
                         matches,
                         key=lambda pos: (
-                            abs(pos - target),
+                            abs(pos - target_offset),
                             pos,
                         ),
                     )
@@ -343,6 +382,8 @@ def _validate_evidence_offsets(
                     normalized_text, index_map = _build_normalized_indices(doc_text)
                     normalized_needle = whitespace_collapse.sub(" ", evidence.text.strip())
                     normalized_pos = normalized_text.find(normalized_needle)
+                    if normalized_pos == -1:
+                        normalized_pos = normalized_text.lower().find(normalized_needle.lower())
                     if normalized_pos != -1 and index_map:
                         start_index = index_map[min(normalized_pos, len(index_map) - 1)]
                         end_index = min(normalized_pos + len(normalized_needle) - 1, len(index_map) - 1)
@@ -359,29 +400,31 @@ def _validate_evidence_offsets(
                         fuzzy_match = _locate_fuzzy(
                             doc_text,
                             evidence.text,
-                            evidence.start_offset,
+                            target_offset,
                             evidence.document_id,
                         )
                         if fuzzy_match is None:
                             logger.warning(
-                                "Rejecting checklist evidence due to no match (item=%s, document_id=%s, provided_start=%s, text=%r)",
+                                "Unable to verify checklist evidence (item=%s, document_id=%s, provided_start=%s, text=%r)",
                                 item_name,
                                 evidence.document_id,
                                 evidence.start_offset,
                                 evidence.text[:120],
                             )
-                            continue
-                        chosen_start, replacement_text, diagnostics = fuzzy_match
-                        chosen_end = chosen_start + len(replacement_text)
-                        logger.debug(
-                            "Fuzzy fallback accepted for checklist evidence (item=%s, document_id=%s, start=%s, diagnostics=%s)",
-                            item_name,
-                            evidence.document_id,
-                            chosen_start,
-                            diagnostics,
-                        )
+                        else:
+                            chosen_start, replacement_text, diagnostics = fuzzy_match
+                            chosen_end = chosen_start + len(replacement_text)
+                            logger.debug(
+                                "Fuzzy fallback accepted for checklist evidence (item=%s, document_id=%s, start=%s, diagnostics=%s)",
+                                item_name,
+                                evidence.document_id,
+                                chosen_start,
+                                diagnostics,
+                            )
 
             if chosen_start is None or chosen_end is None:
+                evidence.start_offset = None
+                validated_evidence.append(evidence)
                 continue
 
             if replacement_text != evidence.text:
@@ -402,8 +445,16 @@ def _validate_evidence_offsets(
                 )
                 evidence.start_offset = chosen_start
 
+            evidence.verified = True
             validated_evidence.append(evidence)
+
+        if discard_value:
+            continue
+
         extracted_item.evidence = validated_evidence
+        filtered_values.append(extracted_item)
+
+    extraction.extracted = filtered_values
 
 
 async def extract_document_checklists(case_id: str, documents: List[DocumentReference]) -> ChecklistCollection:
@@ -416,12 +467,15 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
         return cached
 
     case_documents_block = _build_case_documents_block(payloads)
+    document_catalog_block = _build_document_catalog(payloads)
     items: List[ChecklistItemResult] = []
     text_lookup = {payload["id"]: payload["text"] for payload in payloads}
 
     async def _extract_item(name: str, desc: str) -> ChecklistItemResult:
-        prompt = _DOCUMENT_PROMPT_TEMPLATE.replace("{item_description}", desc).replace(
-            "{case_documents}", case_documents_block
+        prompt = (
+            _DOCUMENT_PROMPT_TEMPLATE.replace("{item_description}", desc)
+            .replace("{document_catalog}", document_catalog_block)
+            .replace("{case_documents}", case_documents_block)
         )
         try:
             extraction = await llm_service.generate_structured(

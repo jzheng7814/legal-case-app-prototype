@@ -1,5 +1,10 @@
 You are assisting a lawyer in extracting key information from legal case documents. You will be given multiple documents related to a legal case, each identified by a unique integer document ID and title. Your task is to {item_description}
 
+# Document Catalog
+The only valid sources are the documents listed below. Double-check every `documentId` you cite against this list. If the needed document is missing, leave `extracted` empty and explain why in `reasoning`.
+
+{document_catalog}
+
 # Notes
 - Do not make assumptions or add information that is not presented in the documents.
 - When extracting evidence, quote the exact text from the documents—no edits or paraphrasing.
@@ -52,10 +57,11 @@ Return **only** JSON in the following structure:
 1. `extracted` and `evidence` are always lists.
 2. Copy the `text` field exactly as it appears in the documents provided above.
 3. Use the document IDs exactly as given in the case documents block. For summary evidence, use `documentId: -1`.
-4. Offsets should correspond to character positions in the plain text for that document (0-based start). Provide your best estimate even if approximate.
-5. If no relevant information is found, return `"extracted": []` and explain why in `reasoning`.
-6. Consider all supplied documents; do not stop after the first match.
-7. Keep the JSON valid—no comments or trailing commas.
+4. Before finalizing, verify that each referenced `documentId` exists in the Document Catalog. If you cannot map the document, leave `extracted` empty and describe the issue in `reasoning`.
+5. Offsets should correspond to character positions in the plain text for that document (0-based start). Provide your best estimate even if approximate.
+6. If no relevant information is found, return `"extracted": []` and explain why in `reasoning`.
+7. Consider all supplied documents; do not stop after the first match.
+8. Keep the JSON valid—no comments or trailing commas.
 
 ## Example (for illustration only)
 ```
