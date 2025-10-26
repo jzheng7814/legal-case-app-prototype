@@ -2,6 +2,61 @@ import React, { useEffect, useRef } from 'react';
 import { Plus, Trash2, Send, X } from 'lucide-react';
 import { useChat, useHighlight, useSummary } from './state/WorkspaceProvider';
 
+const renderMessageContent = (content = '', messageId) => {
+    if (typeof content !== 'string' || !content.length) {
+        return null;
+    }
+
+    const lines = content.split(/\r?\n/);
+    const elements = [];
+    let bulletBuffer = [];
+    let segmentIndex = 0;
+
+    const nextKey = (type) => `${messageId || 'message'}-${type}-${segmentIndex++}`;
+
+    const flushBullets = () => {
+        if (!bulletBuffer.length) {
+            return;
+        }
+        elements.push(
+            <ul key={nextKey('bullets')} className="space-y-1 text-sm">
+                {bulletBuffer.map((bullet, index) => (
+                    <li key={`${messageId || 'message'}-bullet-${segmentIndex}-${index}`} className="flex items-start gap-2">
+                        <span className="select-none leading-6">-</span>
+                        <span className="flex-1">{bullet}</span>
+                    </li>
+                ))}
+            </ul>
+        );
+        bulletBuffer = [];
+    };
+
+    lines.forEach((line) => {
+        const bulletMatch = line.match(/^\s*-\s+(.*)$/);
+        if (bulletMatch) {
+            bulletBuffer.push(bulletMatch[1].trim());
+            return;
+        }
+
+        flushBullets();
+
+        if (!line.trim()) {
+            elements.push(<div key={nextKey('break')} className="h-2" aria-hidden="true" />);
+            return;
+        }
+
+        elements.push(
+            <p key={nextKey('paragraph')} className="text-sm leading-relaxed">
+                {line.trim()}
+            </p>
+        );
+    });
+
+    flushBullets();
+
+    return elements;
+};
+
 const ChatPanel = () => {
     const messagesContainerRef = useRef(null);
     const {
@@ -102,7 +157,7 @@ const ChatPanel = () => {
                                             : 'bg-yellow-50 text-yellow-800 text-xs'
                                 }`}
                             >
-                                {message.content}
+                                {renderMessageContent(message.content, message.id)}
                             </div>
                         ))}
                     </div>
@@ -147,15 +202,22 @@ const ChatPanel = () => {
 
             <div className="border-t p-4">
                 <div className="flex space-x-2">
-                    <input
+                    <textarea
                         ref={chatInputRef}
-                        type="text"
                         value={currentMessage}
                         onChange={(event) => setCurrentMessage(event.target.value)}
-                        onKeyPress={(event) => event.key === 'Enter' && !isEditMode && !isSending && sendChatMessage()}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Enter' && !event.shiftKey) {
+                                event.preventDefault();
+                                if (!isEditMode && !isSending) {
+                                    sendChatMessage();
+                                }
+                            }
+                        }}
                         placeholder={isEditMode ? 'Chat input disabled in edit mode' : 'Ask about your case summary...'}
                         disabled={isEditMode || isSending}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-gray-100 disabled:text-gray-500"
+                        rows={3}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-gray-100 disabled:text-gray-500 resize-none"
                     />
                     <button
                         onClick={sendChatMessage}
