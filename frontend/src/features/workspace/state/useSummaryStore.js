@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { diffWordsWithSpace } from 'diff';
 import { fetchSuggestions, getSummaryJob, startSummaryJob } from '../../../services/apiClient';
 import { DEFAULT_CASE_ID } from '../../../services/documentService';
 
@@ -92,6 +93,95 @@ const normalisePatchPayload = (patch = {}) => ({
             ? patch.insert_text
             : ''
 });
+
+const buildWordLevelPatches = (baseSummary = '', nextSummary = '') => {
+    const source = baseSummary ?? '';
+    const target = nextSummary ?? '';
+    if (source === target) {
+        return [];
+    }
+    const segments = diffWordsWithSpace(source, target);
+    const patches = [];
+    let baseCursor = 0;
+    let pendingPatch = null;
+
+    const flushPatch = () => {
+        if (pendingPatch && (pendingPatch.deleteCount > 0 || pendingPatch.insertText.length > 0)) {
+            const startIndex = Math.max(0, Math.min(pendingPatch.startIndex, source.length));
+            patches.push({
+                startIndex,
+                deleteCount: pendingPatch.deleteCount,
+                insertText: pendingPatch.insertText
+            });
+        }
+        pendingPatch = null;
+    };
+
+    segments.forEach((segment) => {
+        const value = segment.value || '';
+        if (!segment.added && !segment.removed) {
+            baseCursor += value.length;
+            flushPatch();
+            return;
+        }
+
+        if (!pendingPatch) {
+            pendingPatch = {
+                startIndex: baseCursor,
+                deleteCount: 0,
+                insertText: ''
+            };
+        }
+
+        if (segment.removed) {
+            pendingPatch.deleteCount += value.length;
+            baseCursor += value.length;
+        }
+
+        if (segment.added) {
+            pendingPatch.insertText += value;
+        }
+    });
+
+    flushPatch();
+
+    return patches.filter((patch) => patch.deleteCount > 0 || patch.insertText.length > 0);
+};
+
+const applyRawPatchesToBase = (baseSummary = '', patches = []) => {
+    if (!patches?.length) {
+        return baseSummary ?? '';
+    }
+    const source = baseSummary ?? '';
+    let cursor = 0;
+    let output = '';
+    patches
+        .slice()
+        .sort((a, b) => a.startIndex - b.startIndex)
+        .forEach((patch) => {
+            const boundedStart = Math.max(0, Math.min(patch.startIndex, source.length));
+            output += source.slice(cursor, boundedStart);
+            output += patch.insertText || '';
+            cursor = boundedStart + patch.deleteCount;
+        });
+    output += source.slice(cursor);
+    return output;
+};
+
+const resolveFinalSummary = (baseSummary = '', providedSummary, patches = []) => {
+    const source = baseSummary ?? '';
+    const provided = typeof providedSummary === 'string' ? providedSummary : null;
+    if (provided != null && provided !== source) {
+        return provided;
+    }
+    if (patches.length > 0) {
+        return applyRawPatchesToBase(source, patches);
+    }
+    if (provided != null) {
+        return provided;
+    }
+    return source;
+};
 
 const applyPatchesToBase = (baseSummary, patches) => {
     if (!baseSummary || !patches?.length) {
@@ -262,10 +352,13 @@ const useSummaryStore = ({
                 .filter((entry) => entry.deleteCount > 0 || entry.insertText.length > 0)
             : [];
 
-        if (normalisedPatches.length === 0) {
+        const finalSummary = resolveFinalSummary(baseSummary, nextSummary, normalisedPatches);
+        const wordPatches = buildWordLevelPatches(baseSummary, finalSummary);
+
+        if (wordPatches.length === 0) {
             setPatchAction(null);
             setActivePatchId(null);
-            setSummaryText(nextSummary ?? '', { skipPatchInvalidation: true });
+            setSummaryText(finalSummary ?? '', { skipPatchInvalidation: true });
             return;
         }
 
@@ -275,17 +368,17 @@ const useSummaryStore = ({
             createdAt: new Date().toISOString(),
             baseSummary,
             isStale: false,
-            patches: normalisedPatches.map((patch, index) => ({
+            patches: wordPatches.map((patch, index) => ({
                 ...patch,
                 id: `${actionId}-${index}`,
-                deletedText: baseSummary.slice(patch.startIndex, patch.startIndex + patch.deleteCount),
+                deletedText: baseSummary.slice(patch.startIndex, patch.startIndex + patch.deleteCount) || '',
                 status: 'applied'
             }))
         };
 
         setPatchAction(hydratePatchAction(preparedAction));
         setActivePatchId(null);
-        setSummaryText(nextSummary ?? '', { skipPatchInvalidation: true });
+        setSummaryText(finalSummary ?? '', { skipPatchInvalidation: true });
     }, [setSummaryText]);
 
     const revertPatch = useCallback((patchId) => {
@@ -421,7 +514,7 @@ const useSummaryStore = ({
         } finally {
             setIsGeneratingSummary(false);
         }
-    }, [pollSummaryJob, resolvedCaseId]);
+    }, [pollSummaryJob, resolvedCaseId, setSummaryText]);
 
     const refreshSuggestions = useCallback(async (
         { caseId: overrideCaseId, documents = [], maxSuggestions = 6 } = {}
@@ -517,7 +610,8 @@ const useSummaryStore = ({
         previewPatch,
         clearPatchPreview,
         dismissPatchAction,
-        resolvedCaseId
+        resolvedCaseId,
+        setSummaryText
     ]);
 
     return value;

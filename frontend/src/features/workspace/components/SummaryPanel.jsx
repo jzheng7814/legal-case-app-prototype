@@ -30,6 +30,7 @@ const SummaryPanel = () => {
         clearPatchPreview
     } = useSummary();
     const documents = useDocuments();
+    const { documentRef, setSelectedDocument } = documents;
     const activeCaseId = documents.caseId;
     const {
         renderSummaryWithSuggestions,
@@ -224,14 +225,14 @@ const SummaryPanel = () => {
             if (Number.isNaN(resolvedDocumentId)) {
                 return;
             }
-            if (typeof documents.setSelectedDocument === 'function') {
-                documents.setSelectedDocument(resolvedDocumentId);
+            if (typeof setSelectedDocument === 'function') {
+                setSelectedDocument(resolvedDocumentId);
             }
-            if (documents.documentRef?.current) {
-                documents.documentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+            if (documentRef?.current) {
+                documentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
             }
         },
-        [documents.documentRef, documents.setSelectedDocument, handleContextClick]
+        [documentRef, handleContextClick, setSelectedDocument]
     );
 
     return (

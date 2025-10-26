@@ -34,7 +34,7 @@ const normaliseDocument = (doc = {}) => {
     const id = coerceDocumentId(doc.id);
     const defaultTitle = `Document ${id}`;
     const title = doc.title ?? doc.name ?? defaultTitle;
-    const { name, ...rest } = doc;
+    const { name: _LEGACY_NAME, ...rest } = doc;
     return { ...rest, id, title };
 };
 

@@ -268,6 +268,37 @@ const useHighlightStore = ({ summary, documents }) => {
         }
     }, [activeHighlight, clearActiveHighlight, documents.selectedDocument]);
 
+    const handleSuggestionHover = useCallback((event, suggestion) => {
+        if (!event?.target) {
+            return;
+        }
+        if (hoverTimeoutRef.current) {
+            clearTimeout(hoverTimeoutRef.current);
+            hoverTimeoutRef.current = null;
+        }
+        const rect = event.target.getBoundingClientRect();
+        setHoverPosition({ x: rect.left, y: rect.bottom + 5 });
+        setHoveredSuggestion(suggestion);
+    }, []);
+
+    const handleSuggestionLeave = useCallback(() => {
+        hoverTimeoutRef.current = setTimeout(() => {
+            setHoveredSuggestion(null);
+            hoverTimeoutRef.current = null;
+        }, 200);
+    }, []);
+
+    const handlePopupEnter = useCallback(() => {
+        if (hoverTimeoutRef.current) {
+            clearTimeout(hoverTimeoutRef.current);
+            hoverTimeoutRef.current = null;
+        }
+    }, []);
+
+    const handlePopupLeave = useCallback(() => {
+        setHoveredSuggestion(null);
+    }, []);
+
     const renderSummaryWithSuggestions = useCallback((text) => {
         if (summary.isEditMode || !text) {
             return text;
@@ -323,38 +354,15 @@ const useHighlightStore = ({ summary, documents }) => {
         });
 
         return parts;
-    }, [highlightedContext, persistentSuggestionPopup, rejectedSuggestions, summary.isEditMode, summary.suggestions]);
-
-    const handleSuggestionHover = useCallback((event, suggestion) => {
-        if (!event?.target) {
-            return;
-        }
-        if (hoverTimeoutRef.current) {
-            clearTimeout(hoverTimeoutRef.current);
-            hoverTimeoutRef.current = null;
-        }
-        const rect = event.target.getBoundingClientRect();
-        setHoverPosition({ x: rect.left, y: rect.bottom + 5 });
-        setHoveredSuggestion(suggestion);
-    }, []);
-
-    const handleSuggestionLeave = useCallback(() => {
-        hoverTimeoutRef.current = setTimeout(() => {
-            setHoveredSuggestion(null);
-            hoverTimeoutRef.current = null;
-        }, 200);
-    }, []);
-
-    const handlePopupEnter = useCallback(() => {
-        if (hoverTimeoutRef.current) {
-            clearTimeout(hoverTimeoutRef.current);
-            hoverTimeoutRef.current = null;
-        }
-    }, []);
-
-    const handlePopupLeave = useCallback(() => {
-        setHoveredSuggestion(null);
-    }, []);
+    }, [
+        handleSuggestionHover,
+        handleSuggestionLeave,
+        highlightedContext,
+        persistentSuggestionPopup,
+        rejectedSuggestions,
+        summary.isEditMode,
+        summary.suggestions
+    ]);
 
     const applySuggestion = useCallback((suggestion) => {
         if (!suggestion) {
@@ -576,7 +584,8 @@ const useHighlightStore = ({ summary, documents }) => {
         selectedText,
         showTabTooltip,
         startSuggestionDiscussion,
-        tooltipPosition
+        tooltipPosition,
+        clearActiveHighlight
     ]);
 
     return value;

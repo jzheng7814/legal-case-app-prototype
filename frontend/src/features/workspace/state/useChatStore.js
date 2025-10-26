@@ -46,6 +46,8 @@ const buildContextPayload = (contextItems = []) =>
 const isRangeEqual = (left, right) => left?.start === right?.start && left?.end === right?.end;
 
 const useChatStore = ({ summary, documents, highlight }) => {
+    const currentSummaryText = summary.summaryText;
+    const applySummaryUpdate = summary.applyAiSummaryUpdate;
     const [chatMessages, setChatMessages] = useState([]);
     const [currentMessage, setCurrentMessage] = useState('');
     const [chatContext, setChatContext] = useState([]);
@@ -230,7 +232,7 @@ const useChatStore = ({ summary, documents, highlight }) => {
             const sessionId = await ensureSession();
             const payload = {
                 message,
-                summaryText: summary.summaryText,
+                summaryText: currentSummaryText,
                 context: buildContextPayload(activeContext),
                 documents: (documents.documents || []).map((doc) => ({ id: doc.id, title: doc.title })),
             };
@@ -242,9 +244,9 @@ const useChatStore = ({ summary, documents, highlight }) => {
             setChatContext(activeContext);
             if (summaryUpdate) {
                 const nextSummary = typeof summaryUpdate === 'string' ? summaryUpdate.trim() : summaryUpdate;
-                summary.applyAiSummaryUpdate(nextSummary, summaryPatches);
+                applySummaryUpdate(nextSummary, summaryPatches);
             } else if (summaryPatches.length) {
-                summary.applyAiSummaryUpdate(summary.summaryText, summaryPatches);
+                applySummaryUpdate(currentSummaryText, summaryPatches);
             }
             setAllChats((previous) => {
                 const filtered = previous.filter((chat) => chat.id !== sessionId);
@@ -263,7 +265,7 @@ const useChatStore = ({ summary, documents, highlight }) => {
         } finally {
             setIsSending(false);
         }
-    }, [chatContext, documents.documents, ensureSession, summary.applyAiSummaryUpdate, summary.summaryText]);
+    }, [applySummaryUpdate, chatContext, currentSummaryText, documents.documents, ensureSession]);
 
     const sendChatMessage = useCallback(async () => {
         if (isSending || !currentMessage.trim()) {
