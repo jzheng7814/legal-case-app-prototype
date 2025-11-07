@@ -3,7 +3,7 @@
 Full-stack prototype for an attorney-facing case summary editor. The React/Vite frontend gives writers a document-rich workspace, while the FastAPI backend handles document retrieval, checklist extraction, summary generation, AI suggestions, and a tool-enabled chat loop that can commit edits back into the draft.
 
 ## Repository Layout
-- `frontend/` – React 19 + Vite workspace (Tailwind plugin, lucide icons, diff utilities) with the authoring UI.
+- `frontend/` – React 19 + Vite workspace
 - `backend/` – FastAPI service plus background jobs, LLM abstraction, Clearinghouse client stub, and structured schemas.
 - `backend/app/data/` – Bundled demo catalog (`catalog.json` + `.txt` sources) and lightweight JSON “flat DB” caches for documents and checklist signatures.
 - `backend/app/resources/checklists/` – Prompt template and curated checklist metadata the suggestion engine references.
@@ -12,7 +12,7 @@ Full-stack prototype for an attorney-facing case summary editor. The React/Vite 
 
 ## Platform Capabilities
 ### Document ingestion & caching
-- `GET /cases/{case_id}/documents` first serves demo files (case `-1`) and otherwise hydrates cases from the Clearinghouse client stub in `app/services/clearinghouse.py`.
+- `GET /cases/{case_id}/documents` serves documents (-1 if demo documents, otherwise pulled from Clearinghouse).
 - Remote pulls are cached both in-memory and on disk (`backend/app/data/flat_db/case_documents.json`) so repeated loads are instant and survive process restarts.
 - The same endpoint prefetches LLM-derived checklists in the background and returns `checklist_status` (`pending`, `cached`, `fallback`) so the UI can reflect readiness.
 - The frontend document service gracefully falls back to static assets in `frontend/public/documents/` if the API is offline, and attorneys can inject ad‑hoc uploads from the home screen (files stay in memory on the client).
@@ -98,7 +98,7 @@ npm run dev                      # launches on http://localhost:5173
 | `LEGAL_CASE_ENVIRONMENT` | `development`/`production` (affects CORS + logging). |
 | `LEGAL_CASE_USE_MOCK_LLM` | Force the deterministic mock backend (great for UI demos). |
 | `LEGAL_CASE_CONFIG_PATH` | Path to the JSON model config (defaults to `config/app.config.json`). |
-| `LEGAL_CASE_OPENAI_API_KEY` or `OPENAI_API_KEY` | Required when `model.provider` is `openai`. |
+| `OPENAI_API_KEY` | Required when `model.provider` is `openai`. |
 | `LEGAL_CASE_CLEARINGHOUSE_API_KEY` | Enables the Clearinghouse HTTP client; omit to stay in demo mode. |
 
 `backend/config/app.config.json` controls the active provider, model IDs, timeouts, and defaults (temperature, max tokens). Switch providers by editing `model.provider` and filling in the corresponding block—no code changes needed.
@@ -120,12 +120,5 @@ npm run dev                      # launches on http://localhost:5173
 - **Checklist insights**: Each checklist column (documents vs summary) shows status, reasoning, and evidence ranges. Clicking the “Add to Chat” icon pushes a concise, cite-rich note into the chat context so the AI can fix missing elements.
 - **Chat context shortcuts**: Selecting text and pressing `Tab` adds the snippet as a context chip. You can also pin arbitrary notes, checklist rows, or suggestion comments. The chat panel deduplicates overlapping ranges to keep payloads small.
 - **Uploaded materials**: Files chosen on the home screen are treated as additional documents in the workspace session only—they aren’t persisted to the backend, which keeps compliance scopes clear during demos.
-
-## Extending & Next Steps
-1. **Clearinghouse integration** – Wire real credentials into `app/services/clearinghouse.py` and replace the stubbed endpoints; persisted caches already exist.
-2. **Durable storage** – Replace in-memory summary jobs/chat sessions with Redis or a database so multiple backend instances can collaborate.
-3. **Automated tests** – Add FastAPI route tests (e.g., pytest + httpx ASGI client) and component tests around the React stores to lock down the summary/chat flows.
-4. **Model experimentation** – Update `app.config.json` with alternate OpenAI or local models; use `LEGAL_CASE_USE_MOCK_LLM=true` for deterministic golden snapshots.
-5. **Telemetry** – Attach OpenTelemetry or structured logging to user actions (generate, accept suggestion, revert patch) to understand editor behavior over time.
 
 Happy lawyering!
