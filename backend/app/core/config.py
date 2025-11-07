@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     config_path: str = "config/app.config.json"
     openai_api_key: Optional[str] = None
     clearinghouse_api_key: Optional[str] = None
+    database_url: str = Field(default="postgresql+psycopg://postgres:postgres@localhost:5432/legal_case_app")
+    database_echo: bool = False
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
+    database_pool_timeout: int = 30
+    database_pool_recycle: int = 1800
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", env_prefix="LEGAL_CASE_")
 

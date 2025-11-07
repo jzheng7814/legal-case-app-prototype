@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 from difflib import SequenceMatcher
@@ -13,7 +12,7 @@ from fastapi import HTTPException
 
 from rapidfuzz import fuzz, process
 
-from app.data.checklist_store import DocumentChecklistStore, JsonDocumentChecklistStore
+from app.data.checklist_store import DatabaseDocumentChecklistStore, DocumentChecklistStore
 from app.schemas.checklists import (
     ChecklistCollection,
     ChecklistEvidence,
@@ -24,6 +23,8 @@ from app.schemas.checklists import (
 from app.schemas.documents import DocumentReference
 from app.services.documents import get_document
 from app.services.llm import llm_service
+from app.utils.cases import normalize_case_id
+from app.utils.document_signatures import compute_documents_signature
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +44,7 @@ _CHECKLIST_ITEM_DESCRIPTIONS: Dict[str, str] = json.loads(_ITEM_DESCRIPTIONS_PAT
 _DOCUMENT_CACHE: Dict[str, ChecklistCollection] = {}
 _DOCUMENT_CACHE_LOCK = asyncio.Lock()
 
-_CHECKLIST_DB_PATH = (
-    Path(__file__).resolve().parents[1] / "data" / "flat_db" / "document_checklist_items.json"
-)
-_DOCUMENT_CHECKLIST_STORE: DocumentChecklistStore = JsonDocumentChecklistStore(_CHECKLIST_DB_PATH)
+_DOCUMENT_CHECKLIST_STORE: DocumentChecklistStore = DatabaseDocumentChecklistStore(_CHECKLIST_ITEM_DESCRIPTIONS)
 
 _MAX_DOCUMENT_CHARS = 12_000
 _MAX_SUMMARY_CHARS = 6_000
@@ -119,16 +117,6 @@ def _build_document_catalog(payloads: List[Dict[str, str]]) -> str:
     return "\n".join(lines) if lines else "No documents were supplied."
 
 
-def _compute_documents_signature(case_id: str, payloads: List[Dict[str, str]]) -> str:
-    digest = hashlib.sha256(case_id.encode("utf-8"))
-    for payload in sorted(payloads, key=lambda item: item["id"]):
-        digest.update(str(payload["id"]).encode("utf-8"))
-        digest.update(payload["title"].encode("utf-8"))
-        digest.update(payload["type"].encode("utf-8"))
-        digest.update(payload["text"].encode("utf-8"))
-    return digest.hexdigest()
-
-
 def _copy_collection(collection: ChecklistCollection) -> ChecklistCollection:
     return collection.model_copy(deep=True)
 
@@ -136,15 +124,16 @@ def _copy_collection(collection: ChecklistCollection) -> ChecklistCollection:
 async def _resolve_cached_collection(
     case_id: str, documents: List[DocumentReference]
 ) -> tuple[ChecklistCollection | None, List[Dict[str, str]], str]:
-    payloads = _resolve_document_payloads(case_id, documents)
-    signature = _compute_documents_signature(case_id, payloads)
+    normalized_case_id = normalize_case_id(case_id)
+    payloads = _resolve_document_payloads(normalized_case_id, documents)
+    signature = compute_documents_signature(normalized_case_id, payloads)
 
     async with _DOCUMENT_CACHE_LOCK:
         cached = _DOCUMENT_CACHE.get(signature)
     if cached is not None:
         return _copy_collection(cached), payloads, signature
 
-    stored = _DOCUMENT_CHECKLIST_STORE.get(case_id, signature=signature)
+    stored = _DOCUMENT_CHECKLIST_STORE.get(normalized_case_id, signature=signature)
     if stored is not None:
         cached_copy = _copy_collection(stored.items)
         async with _DOCUMENT_CACHE_LOCK:
@@ -504,8 +493,14 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
 
     items = list(gathered)
     results = ChecklistCollection(items=items)
+    normalized_case_id = normalize_case_id(case_id)
     try:
-        _DOCUMENT_CHECKLIST_STORE.set(case_id, signature=signature, items=results)
+        _DOCUMENT_CHECKLIST_STORE.set(
+            normalized_case_id,
+            signature=signature,
+            items=results,
+            documents_payloads=payloads,
+        )
     except Exception:  # pylint: disable=broad-except
         logger.exception("Failed to persist checklist results for case %s", case_id)
 

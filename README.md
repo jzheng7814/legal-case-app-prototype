@@ -13,7 +13,7 @@ Full-stack prototype for an attorney-facing case summary editor. The React/Vite 
 ## Platform Capabilities
 ### Document ingestion & caching
 - `GET /cases/{case_id}/documents` serves documents (-1 if demo documents, otherwise pulled from Clearinghouse).
-- Remote pulls are cached both in-memory and on disk (`backend/app/data/flat_db/case_documents.json`) so repeated loads are instant and survive process restarts.
+- Remote pulls are cached in-memory and persisted in PostgreSQL (`document_sets` + `document_set_documents`) so repeated loads are instant and survive process restarts.
 - The same endpoint prefetches LLM-derived checklists in the background and returns `checklist_status` (`pending`, `cached`, `fallback`) so the UI can reflect readiness.
 - The frontend document service gracefully falls back to static assets in `frontend/public/documents/` if the API is offline, and attorneys can inject ad‑hoc uploads from the home screen (files stay in memory on the client).
 
@@ -24,7 +24,7 @@ Full-stack prototype for an attorney-facing case summary editor. The React/Vite 
 
 ### Checklist-aware suggestion engine
 - Each suggestion request runs two checklist extractors (`app/services/checklists.py`): one over the authoritative documents, one over the current summary. The prompt template plus item metadata lives under `app/resources/checklists/`.
-- Checklist extraction is cached per case (hashed signature + payload persisted in `backend/app/data/flat_db/document_checklist_items.json`) and re-used whenever the source documents haven’t changed.
+- Checklist extraction is cached per case (hashed signature + payload persisted in `checklist_runs`/`checklist_run_items`) and re-used whenever the source documents haven’t changed.
 - `app/services/suggestions.py` compares document-vs-summary results, asks the LLM for structured suggestions validated against `SuggestionGenerationPayload`, and prunes overlapping spans via `rapidfuzz`/`SequenceMatcher` heuristics.
 - Responses include both checklist collections so the UI can show what’s missing and let users push checklist gaps into chat context.
 
@@ -90,6 +90,27 @@ npm run dev                      # launches on http://localhost:5173
 5. Hit “Refresh Suggestions” after edits; suggestion popovers appear inline with accept/reject/discuss buttons.
 6. Use `Tab` while text is selected (summary or document) to push the snippet into the chat context, ask a question, and optionally apply the AI’s patch via the patch panel.
 
+## Database setup
+### Install PostgreSQL
+- **macOS (Homebrew)**  
+  1. `brew install postgresql@16`  
+  2. `brew services start postgresql@16`  
+  3. `createdb legal_case_app`
+- **Oracle Linux (dnf/yum)**  
+  1. `sudo dnf install -y postgresql16-server postgresql16`  
+  2. `sudo /usr/pgsql-16/bin/postgresql-16-setup initdb`  
+  3. `sudo systemctl enable --now postgresql-16`  
+  4. `sudo -u postgres createdb legal_case_app`
+
+### Configure the backend
+- Set `LEGAL_CASE_DATABASE_URL` (e.g., `postgresql+psycopg://postgres:postgres@localhost:5432/legal_case_app`) in `.env`. Optional knobs `LEGAL_CASE_DATABASE_ECHO`, `LEGAL_CASE_DATABASE_POOL_SIZE`, `LEGAL_CASE_DATABASE_MAX_OVERFLOW`, and friends mirror the SQLAlchemy engine settings if you need to tune connections.
+
+### Run migrations
+- From the `backend/` directory run `alembic upgrade head` (no automatic migrations are executed on startup).
+
+### Inspecting data
+- Use whichever tool fits: `psql legal_case_app`, TablePlus, pgAdmin, or any other Postgres client pointed at the same DSN to review `document_sets`, checklist runs, chat history, etc.
+
 ## Configuration
 ### Backend environment (`LEGAL_CASE_*`)
 | Variable | Purpose |
@@ -100,6 +121,8 @@ npm run dev                      # launches on http://localhost:5173
 | `LEGAL_CASE_CONFIG_PATH` | Path to the JSON model config (defaults to `config/app.config.json`). |
 | `OPENAI_API_KEY` | Required when `model.provider` is `openai`. |
 | `LEGAL_CASE_CLEARINGHOUSE_API_KEY` | Enables the Clearinghouse HTTP client; omit to stay in demo mode. |
+| `LEGAL_CASE_DATABASE_URL` | PostgreSQL connection string used by SQLAlchemy/Alembic (defaults to `postgresql+psycopg://postgres:postgres@localhost:5432/legal_case_app`). |
+| `LEGAL_CASE_DATABASE_ECHO` | Set to `true` to log SQL statements while debugging. |
 
 `backend/config/app.config.json` controls the active provider, model IDs, timeouts, and defaults (temperature, max tokens). Switch providers by editing `model.provider` and filling in the corresponding block—no code changes needed.
 
@@ -110,7 +133,7 @@ npm run dev                      # launches on http://localhost:5173
 
 ### Data, assets, and logs
 - Demo documents: `backend/app/data/documents/*.txt` + `catalog.json`.
-- API caches: `backend/app/data/flat_db/case_documents.json` and `document_checklist_items.json`.
+- API caches: stored in PostgreSQL via `document_sets`, `document_set_documents`, `checklist_runs`, and `checklist_run_items`.
 - Frontend fallback docs: `frontend/public/documents/`.
 - LLM/file logs: `backend/logs/llm-*.log`, `backend/logs/clearinghouse-*.log`, etc.
 

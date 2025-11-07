@@ -8,9 +8,12 @@ from threading import RLock
 from typing import Any, Dict, Iterable, List, Optional
 
 from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
-from app.data.case_document_store import CaseDocumentStore, JsonCaseDocumentStore
+from app.db.models import DocumentSet, DocumentSetDocument, DocumentSetType, DocumentSource
+from app.db.session import session_scope
 from app.schemas.documents import Document, DocumentMetadata
 from app.services.clearinghouse import (
     ClearinghouseClient,
@@ -18,15 +21,13 @@ from app.services.clearinghouse import (
     ClearinghouseNotConfigured,
     ClearinghouseNotFound,
 )
+from app.utils.cases import normalize_case_id
+from app.utils.document_signatures import compute_documents_signature
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_CASE_ID = "-1"
-
 _settings = get_settings()
 _DATA_ROOT = Path(__file__).resolve().parent.parent / _settings.document_root
-_CASE_STORE_PATH = Path(__file__).resolve().parents[1] / "data" / "flat_db" / "case_documents.json"
-_CASE_STORE: CaseDocumentStore = JsonCaseDocumentStore(_CASE_STORE_PATH)
 
 _CASE_CACHE: Dict[str, List[Document]] = {}
 _CASE_CACHE_LOCK = RLock()
@@ -42,7 +43,7 @@ def _load_catalog() -> Dict[str, Any]:
 
 
 def list_documents(case_id: str) -> List[Document]:
-    normalized = _normalize_case_id(case_id)
+    normalized = normalize_case_id(case_id)
 
     catalog_documents = _load_catalog_documents(normalized)
     if catalog_documents is not None:
@@ -77,7 +78,7 @@ def list_documents(case_id: str) -> List[Document]:
 
 
 def get_document(case_id: str, document_id: str) -> Document:
-    normalized = _normalize_case_id(case_id)
+    normalized = normalize_case_id(case_id)
     documents = _get_cached_documents(normalized)
     if documents is None:
         documents = list_documents(normalized)
@@ -88,7 +89,7 @@ def get_document(case_id: str, document_id: str) -> Document:
 
 
 def get_document_metadata(case_id: str) -> List[DocumentMetadata]:
-    normalized = _normalize_case_id(case_id)
+    normalized = normalize_case_id(case_id)
     documents = _get_cached_documents(normalized)
     if documents is None:
         documents = list_documents(normalized)
@@ -127,6 +128,7 @@ def _load_catalog_documents(case_id: str) -> Optional[List[Document]]:
                 content=content,
             )
         )
+    _persist_document_set(case_id, documents)
     return documents
 
 
@@ -134,10 +136,7 @@ def _fetch_remote_documents(case_id: str) -> List[Document]:
     client = _get_clearinghouse_client()
     documents = client.fetch_case_documents(case_id)
     _remember_documents(case_id, documents)
-    try:
-        _CASE_STORE.set(case_id, [doc.model_dump(mode="json") for doc in documents])
-    except Exception:  # pylint: disable=broad-except
-        logger.exception("Failed to persist Clearinghouse documents for case %s.", case_id)
+    _persist_document_set(case_id, documents)
     return documents
 
 
@@ -168,34 +167,140 @@ def _get_cached_documents(case_id: str) -> Optional[List[Document]]:
     if cached is not None:
         return _clone_documents(cached)
 
-    stored = _CASE_STORE.get(case_id)
-    if stored is None:
+    persisted = _load_persisted_documents(case_id)
+    if not persisted:
         return None
 
-    documents: List[Document] = []
-    for item in stored.documents:
-        if isinstance(item, dict):
-            working = dict(item)
-            if "title" not in working and "name" in working:
-                working["title"] = working.pop("name")
-            if "id" in working and not isinstance(working["id"], int):
-                try:
-                    working["id"] = int(str(working["id"]).strip())
-                except (TypeError, ValueError):
-                    logger.warning("Unable to coerce cached document id %r to integer for case %s.", working["id"], case_id)
+    _remember_documents(case_id, persisted)
+    return _clone_documents(persisted)
+
+
+def _build_signature_payloads(documents: Iterable[Document]) -> List[Dict[str, str]]:
+    payloads: List[Dict[str, str]] = []
+    for doc in documents:
+        payloads.append(
+            {
+                "id": doc.id,
+                "title": doc.title or "",
+                "type": doc.type or "",
+                "text": doc.content or "",
+            }
+        )
+    return payloads
+
+
+def _persist_document_set(case_id: str, documents: List[Document]) -> None:
+    if not documents:
+        return
+
+    payloads = _build_signature_payloads(documents)
+    doc_hash = compute_documents_signature(case_id, payloads)
+
+    try:
+        with session_scope() as session:
+            stmt = (
+                select(DocumentSet)
+                .where(
+                    DocumentSet.case_identifier == case_id,
+                    DocumentSet.type == DocumentSetType.CLEARINGHOUSE,
+                    DocumentSet.user_id.is_(None),
+                    DocumentSet.doc_hash == doc_hash,
+                )
+                .options(selectinload(DocumentSet.documents))
+            )
+            document_set = session.execute(stmt).scalars().first()
+            if document_set is None:
+                document_set = DocumentSet(
+                    type=DocumentSetType.CLEARINGHOUSE,
+                    case_identifier=case_id,
+                    user_id=None,
+                    doc_hash=doc_hash,
+                    title=f"Case {case_id} documents",
+                    description="Clearinghouse document bundle",
+                )
+                session.add(document_set)
+            else:
+                document_set.title = document_set.title or f"Case {case_id} documents"
+                document_set.description = document_set.description or "Clearinghouse document bundle"
+                document_set.documents.clear()
+            document_set.doc_hash = doc_hash
+
+            for position, doc in enumerate(documents):
+                metadata = {
+                    "id": doc.id,
+                    "title": doc.title,
+                    "type": doc.type,
+                    "description": doc.description,
+                    "source": doc.source,
+                    "content": doc.content,
+                }
+                document_set.documents.append(
+                    DocumentSetDocument(
+                        source=DocumentSource.CLEARINGHOUSE,
+                        remote_document_id=str(doc.id),
+                        manual_document_id=None,
+                        position=position,
+                        display_name=doc.title,
+                        doc_type=doc.type,
+                        metadata_json=metadata,
+                    )
+                )
+    except Exception:  # pylint: disable=broad-except
+        logger.exception("Failed to persist document set for case %s.", case_id)
+
+
+def _load_persisted_documents(case_id: str) -> Optional[List[Document]]:
+    try:
+        with session_scope() as session:
+            stmt = (
+                select(DocumentSet)
+                .where(
+                    DocumentSet.case_identifier == case_id,
+                    DocumentSet.type == DocumentSetType.CLEARINGHOUSE,
+                    DocumentSet.user_id.is_(None),
+                )
+                .order_by(DocumentSet.updated_at.desc())
+                .options(selectinload(DocumentSet.documents))
+            )
+            document_set = session.execute(stmt).scalars().first()
+            if document_set is None:
+                return None
+
+            documents: List[Document] = []
+            for record in sorted(document_set.documents, key=lambda entry: entry.position):
+                metadata = record.metadata_json or {}
+                text = metadata.get("content") or metadata.get("text")
+                if not text:
                     continue
-            item = working
-        documents.append(Document.model_validate(item))
-    _remember_documents(case_id, documents)
-    return _clone_documents(documents)
+                document_id = _coerce_document_id(record.remote_document_id, record.manual_document_id)
+                if document_id is None:
+                    continue
+                documents.append(
+                    Document(
+                        id=document_id,
+                        title=record.display_name or metadata.get("title") or f"Document {document_id}",
+                        type=record.doc_type or metadata.get("type"),
+                        description=metadata.get("description"),
+                        source=metadata.get("source") or record.source.value,
+                        content=text,
+                    )
+                )
+            return documents or None
+    except Exception:  # pylint: disable=broad-except
+        logger.exception("Failed to load persisted documents for case %s.", case_id)
+        return None
+
+
+def _coerce_document_id(remote_document_id: Optional[str], manual_document_id: Optional[int]) -> Optional[int]:
+    if remote_document_id is not None:
+        try:
+            return int(str(remote_document_id).strip())
+        except (TypeError, ValueError):
+            return None
+    if manual_document_id is not None:
+        return int(manual_document_id)
+    return None
 
 
 def _clone_documents(documents: Iterable[Document]) -> List[Document]:
     return [Document.model_validate(doc.model_dump(mode="python")) for doc in documents]
-
-
-def _normalize_case_id(case_id: str) -> str:
-    try:
-        return str(int(case_id))
-    except (TypeError, ValueError):
-        return str(case_id)
