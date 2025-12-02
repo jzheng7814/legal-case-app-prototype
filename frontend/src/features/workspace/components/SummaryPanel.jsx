@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Edit3, Sparkles, Plus } from 'lucide-react';
-import { useSummary, useHighlight, useDocuments, useChat } from '../state/WorkspaceProvider';
-import ChecklistPanel from './ChecklistPanel';
-import { SUMMARY_DOCUMENT_ID } from '../constants';
+import { useSummary, useHighlight, useDocuments } from '../state/WorkspaceProvider';
 import SummaryPatchPanel from './SummaryPatchPanel';
 import { createRangeFromOffsets, computeOverlayRects, scrollRangeIntoView } from '../../../utils/selection';
 
@@ -39,10 +37,8 @@ const SummaryPanel = () => {
         showTabTooltip,
         tooltipPosition,
         selectedText,
-        selectedDocumentText,
-        handleContextClick
+        selectedDocumentText
     } = useHighlight();
-    const { addChecklistContext } = useChat();
     const [localError, setLocalError] = useState(null);
     const [patchOverlayRects, setPatchOverlayRects] = useState([]);
     const [patchOverlayMeta, setPatchOverlayMeta] = useState(null);
@@ -150,21 +146,9 @@ const SummaryPanel = () => {
         }
     }, [activeCaseId, contextDocuments, refreshSuggestions]);
 
-    const handleAddChecklistToChat = useCallback(({ itemName, value, evidence, source }) => {
-        addChecklistContext({ itemName, value, evidence, source });
-    }, [addChecklistContext]);
-
     const handleVersionSelect = useCallback((event) => {
         selectVersion(event.target.value);
     }, [selectVersion]);
-
-    const documentTitleLookup = useMemo(() => {
-        const map = {};
-        (documents.documents || []).forEach((doc) => {
-            map[doc.id] = doc.title || doc.id;
-        });
-        return map;
-    }, [documents.documents]);
 
     const versionOptions = useMemo(() => versionHistory.map((entry) => {
         const date = entry.savedAt ? new Date(entry.savedAt) : null;
@@ -175,68 +159,8 @@ const SummaryPanel = () => {
         };
     }), [versionHistory]);
 
-    const resolveDocumentTitle = useCallback(
-        (documentId) => {
-            if (documentId == null) {
-                return null;
-            }
-            if (documentId === SUMMARY_DOCUMENT_ID) {
-                return 'Summary';
-            }
-            const lookupKey = typeof documentId === 'number' ? documentId : Number.parseInt(documentId, 10);
-            if (Number.isNaN(lookupKey)) {
-                return null;
-            }
-            return documentTitleLookup[lookupKey] || null;
-        },
-        [documentTitleLookup]
-    );
-
-    const handleEvidenceNavigate = useCallback(
-        ({ documentId, startOffset, endOffset }) => {
-            const hasRange = startOffset != null && endOffset != null && endOffset > startOffset;
-            if (hasRange) {
-                if (documentId === SUMMARY_DOCUMENT_ID) {
-                    handleContextClick({
-                        type: 'selection',
-                        range: { start: startOffset, end: endOffset }
-                    });
-                    return;
-                }
-                if (documentId == null) {
-                    return;
-                }
-                const resolvedDocumentId = typeof documentId === 'number' ? documentId : Number.parseInt(documentId, 10);
-                if (Number.isNaN(resolvedDocumentId)) {
-                    return;
-                }
-                handleContextClick({
-                    type: 'document-selection',
-                    documentId: resolvedDocumentId,
-                    range: { start: startOffset, end: endOffset }
-                });
-                return;
-            }
-
-            if (documentId == null || documentId === SUMMARY_DOCUMENT_ID) {
-                return;
-            }
-            const resolvedDocumentId = typeof documentId === 'number' ? documentId : Number.parseInt(documentId, 10);
-            if (Number.isNaN(resolvedDocumentId)) {
-                return;
-            }
-            if (typeof setSelectedDocument === 'function') {
-                setSelectedDocument(resolvedDocumentId);
-            }
-            if (documentRef?.current) {
-                documentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-        },
-        [documentRef, handleContextClick, setSelectedDocument]
-    );
-
     return (
-        <div className="w-2/5 border-r bg-white flex flex-col overflow-hidden">
+        <div className="flex-1 bg-white flex flex-col overflow-hidden">
             <div className="border-b p-4 space-y-3">
                 <div className="flex items-center justify-between">
                     <h2 className="text-lg font-semibold">Case Summary</h2>
@@ -365,14 +289,6 @@ const SummaryPanel = () => {
                         )}
                     </div>
                 </div>
-                <ChecklistPanel
-                    summaryChecklists={summaryChecklists}
-                    documentChecklists={documentChecklists}
-                    documentChecklistStatus={documentChecklistStatus}
-                    onAddChecklist={handleAddChecklistToChat}
-                    onEvidenceNavigate={handleEvidenceNavigate}
-                    resolveDocumentTitle={resolveDocumentTitle}
-                />
             </div>
 
             {showTabTooltip && (selectedText || selectedDocumentText) && (

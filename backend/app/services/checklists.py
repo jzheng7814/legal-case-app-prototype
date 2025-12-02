@@ -4,20 +4,30 @@ import asyncio
 import hashlib
 import json
 import logging
-from difflib import SequenceMatcher
 import re
+import uuid
+from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import HTTPException
 
 from rapidfuzz import fuzz, process
 
-from app.data.checklist_store import DocumentChecklistStore, JsonDocumentChecklistStore
+from app.data.checklist_store import (
+    DocumentChecklistStore,
+    JsonDocumentChecklistStore,
+    StoredDocumentChecklist,
+    StoredUserChecklistItem,
+)
 from app.schemas.checklists import (
+    ChecklistCategory,
+    ChecklistCategoryCollection,
+    ChecklistCategoryValue,
     ChecklistCollection,
     ChecklistEvidence,
     ChecklistExtractionPayload,
+    ChecklistItemCreateRequest,
     ChecklistItemResult,
     SummaryChecklistExtractionPayload,
 )
@@ -30,15 +40,41 @@ logger = logging.getLogger(__name__)
 _ASSET_DIR = Path(__file__).resolve().parents[1] / "resources" / "checklists"
 _TEMPLATE_PATH = _ASSET_DIR / "general_template.txt"
 _ITEM_DESCRIPTIONS_PATH = _ASSET_DIR / "item_specific_info_improved.json"
+_CATEGORY_METADATA_PATH = _ASSET_DIR / "category_metadata.json"
 
 if not _TEMPLATE_PATH.exists():
     raise RuntimeError(f"Checklist prompt template not found at {_TEMPLATE_PATH}")
 
 if not _ITEM_DESCRIPTIONS_PATH.exists():
     raise RuntimeError(f"Checklist item descriptions not found at {_ITEM_DESCRIPTIONS_PATH}")
+if not _CATEGORY_METADATA_PATH.exists():
+    raise RuntimeError(f"Checklist category metadata not found at {_CATEGORY_METADATA_PATH}")
 
 _DOCUMENT_PROMPT_TEMPLATE = _TEMPLATE_PATH.read_text(encoding="utf-8")
 _CHECKLIST_ITEM_DESCRIPTIONS: Dict[str, str] = json.loads(_ITEM_DESCRIPTIONS_PATH.read_text(encoding="utf-8"))
+_CATEGORY_METADATA: List[Dict[str, object]] = json.loads(_CATEGORY_METADATA_PATH.read_text(encoding="utf-8"))
+
+_CATEGORY_LOOKUP: Dict[str, Dict[str, object]] = {}
+_CATEGORY_BY_ITEM: Dict[str, str] = {}
+for category in _CATEGORY_METADATA:
+    category_id = category.get("id")
+    members = category.get("members") or []
+    if not isinstance(category_id, str):
+        raise RuntimeError("Checklist category metadata entries must include string 'id' keys.")
+    if category_id in _CATEGORY_LOOKUP:
+        raise RuntimeError(f"Duplicate checklist category id detected: {category_id}")
+    _CATEGORY_LOOKUP[category_id] = {
+        "id": category_id,
+        "label": category.get("label") or category_id,
+        "color": category.get("color") or "#000000",
+        "members": list(members),
+    }
+    for member in members:
+        if member in _CATEGORY_BY_ITEM:
+            raise RuntimeError(f"Checklist item '{member}' assigned to multiple categories.")
+        _CATEGORY_BY_ITEM[member] = category_id
+
+_CATEGORY_ORDER = [category["id"] for category in _CATEGORY_METADATA if isinstance(category.get("id"), str)]
 
 _DOCUMENT_CACHE: Dict[str, ChecklistCollection] = {}
 _DOCUMENT_CACHE_LOCK = asyncio.Lock()
@@ -56,6 +92,31 @@ SUMMARY_DOCUMENT_ID = -1
 def get_checklist_definitions() -> Dict[str, str]:
     """Return a copy of the checklist item descriptions."""
     return dict(_CHECKLIST_ITEM_DESCRIPTIONS)
+
+
+def get_category_metadata(include_members: bool = False) -> List[Dict[str, object]]:
+    """Return checklist category metadata for UI consumption."""
+    metadata: List[Dict[str, object]] = []
+    for category_id in _CATEGORY_ORDER:
+        category = _CATEGORY_LOOKUP[category_id]
+        if include_members:
+            metadata.append(
+                {
+                    "id": category["id"],
+                    "label": category["label"],
+                    "color": category["color"],
+                    "members": list(category.get("members", [])),
+                }
+            )
+        else:
+            metadata.append(
+                {
+                    "id": category["id"],
+                    "label": category["label"],
+                    "color": category["color"],
+                }
+            )
+    return metadata
 
 
 def _truncate_text(text: str, limit: int) -> str:
@@ -159,6 +220,237 @@ async def get_document_checklists_if_cached(
 ) -> ChecklistCollection | None:
     cached, _, _ = await _resolve_cached_collection(case_id, documents)
     return cached
+
+
+async def ensure_document_checklist_record(
+    case_id: str, documents: List[DocumentReference]
+) -> StoredDocumentChecklist:
+    """Ensure checklist extraction results exist for a case and return the stored payload."""
+    stored = _DOCUMENT_CHECKLIST_STORE.get(case_id)
+    if stored is not None:
+        return stored
+
+    await extract_document_checklists(case_id, documents)
+    stored = _DOCUMENT_CHECKLIST_STORE.get(case_id)
+    if stored is None:
+        raise RuntimeError(f"Checklist extraction for case {case_id} failed to persist.")
+    return stored
+
+
+def build_category_collection(record: StoredDocumentChecklist) -> ChecklistCategoryCollection:
+    """Map fine-grained checklist items into UI categories."""
+    categories: Dict[str, ChecklistCategory] = {
+        meta_id: ChecklistCategory(
+            id=meta_id,
+            label=_CATEGORY_LOOKUP[meta_id]["label"],
+            color=_CATEGORY_LOOKUP[meta_id]["color"],
+            values=[],
+        )
+        for meta_id in _CATEGORY_ORDER
+    }
+
+    for item in record.items.items:
+        category_id = _CATEGORY_BY_ITEM.get(item.item_name)
+        if not category_id or category_id not in categories:
+            continue
+        extracted_values = item.extraction.extracted or []
+        for value_index, extracted in enumerate(extracted_values):
+            value_id = _build_ai_value_id(item.item_name, value_index)
+            evidence = extracted.evidence[0] if extracted.evidence else None
+            categories[category_id].values.append(
+                ChecklistCategoryValue(
+                    id=value_id,
+                    value=extracted.value,
+                    text=_resolve_evidence_text(evidence) or extracted.value,
+                    document_id=evidence.document_id if evidence else None,
+                    start_offset=evidence.start_offset if evidence else None,
+                    end_offset=_resolve_evidence_end_offset(evidence),
+                )
+            )
+
+    for entry in record.user_items:
+        category = categories.get(entry.category_id)
+        if not category:
+            continue
+        category.values.append(
+            ChecklistCategoryValue(
+                id=_build_user_value_id(entry.id),
+                value=entry.value,
+                text=entry.value,
+                document_id=entry.document_id,
+                start_offset=entry.start_offset,
+                end_offset=entry.end_offset,
+            )
+        )
+
+    for category in categories.values():
+        category.values.sort(
+            key=lambda value: (
+                value.document_id is None,
+                value.document_id or 0,
+                value.start_offset if value.start_offset is not None else 0,
+                value.id,
+            )
+        )
+
+    ordered = [categories[category_id] for category_id in _CATEGORY_ORDER]
+    combined_signature = _build_combined_signature(record)
+    return ChecklistCategoryCollection(signature=combined_signature, categories=ordered)
+
+
+def _build_ai_value_id(item_name: str, value_index: int) -> str:
+    return f"ai::{item_name}::{value_index}"
+
+
+def _build_user_value_id(user_item_id: str) -> str:
+    return f"user::{user_item_id}"
+
+
+def _resolve_evidence_text(evidence: Optional[ChecklistEvidence]) -> Optional[str]:
+    if evidence is None:
+        return None
+    text = evidence.text.strip() if isinstance(evidence.text, str) else None
+    return text or None
+
+
+def _resolve_evidence_end_offset(evidence: Optional[ChecklistEvidence]) -> Optional[int]:
+    if evidence is None:
+        return None
+    if evidence.start_offset is None or not isinstance(evidence.text, str):
+        return None
+    return evidence.start_offset + len(evidence.text)
+
+
+def _parse_value_identifier(value_id: str) -> Optional[Dict[str, object]]:
+    parts = value_id.split("::")
+    if not parts:
+        return None
+    prefix = parts[0]
+    if prefix == "ai" and len(parts) == 3:
+        try:
+            index = int(parts[2])
+        except (TypeError, ValueError):
+            return None
+        return {"source": "ai", "item_name": parts[1], "value_index": index}
+    if prefix == "user" and len(parts) == 2:
+        return {"source": "user", "user_id": parts[1]}
+    return None
+
+
+def _remove_ai_value_from_collection(
+    collection: ChecklistCollection, item_name: str, value_index: int
+) -> Optional[ChecklistCollection]:
+    updated_items: List[ChecklistItemResult] = []
+    removed = False
+    for item in collection.items:
+        if item.item_name != item_name:
+            updated_items.append(item)
+            continue
+        current_values = list(item.extraction.extracted or [])
+        if value_index < 0 or value_index >= len(current_values):
+            updated_items.append(item)
+            continue
+        removed = True
+        next_values = [value for idx, value in enumerate(current_values) if idx != value_index]
+        next_extraction = ChecklistExtractionPayload(
+            reasoning=item.extraction.reasoning,
+            extracted=next_values,
+        )
+        updated_items.append(ChecklistItemResult(item_name=item.item_name, extraction=next_extraction))
+    if not removed:
+        return None
+    return ChecklistCollection(items=updated_items)
+
+
+async def _refresh_cache(signature: str, collection: ChecklistCollection) -> None:
+    async with _DOCUMENT_CACHE_LOCK:
+        _DOCUMENT_CACHE[signature] = _copy_collection(collection)
+
+
+def append_user_checklist_value(
+    case_id: str,
+    record: StoredDocumentChecklist,
+    payload: ChecklistItemCreateRequest,
+) -> StoredDocumentChecklist:
+    category_id = payload.category_id
+    if category_id not in _CATEGORY_LOOKUP:
+        raise HTTPException(status_code=400, detail=f"Unknown checklist category '{category_id}'.")
+    if (
+        payload.start_offset is not None
+        and payload.end_offset is not None
+        and payload.start_offset >= payload.end_offset
+    ):
+        raise HTTPException(status_code=400, detail="Checklist highlights must have a positive length.")
+
+    trimmed_value = payload.text.strip()
+    if not trimmed_value:
+        raise HTTPException(status_code=400, detail="Checklist text is required.")
+
+    entry = StoredUserChecklistItem(
+        id=str(uuid.uuid4()),
+        category_id=category_id,
+        value=trimmed_value,
+        document_id=payload.document_id,
+        start_offset=payload.start_offset,
+        end_offset=payload.end_offset,
+    )
+    next_entries = [*record.user_items, entry]
+    _DOCUMENT_CHECKLIST_STORE.set(
+        case_id,
+        signature=record.signature,
+        items=record.items,
+        user_items=next_entries,
+    )
+    return StoredDocumentChecklist(signature=record.signature, items=record.items, user_items=next_entries)
+
+
+async def remove_checklist_value(case_id: str, value_id: str) -> StoredDocumentChecklist:
+    record = _DOCUMENT_CHECKLIST_STORE.get(case_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Checklist not found for this case.")
+    parsed = _parse_value_identifier(value_id)
+    if parsed is None:
+        raise HTTPException(status_code=404, detail="Checklist item not found.")
+    if parsed["source"] == "user":
+        user_id = parsed["user_id"]
+        next_entries = [entry for entry in record.user_items if entry.id != user_id]
+        if len(next_entries) == len(record.user_items):
+            raise HTTPException(status_code=404, detail="Checklist item not found.")
+        _DOCUMENT_CHECKLIST_STORE.set(
+            case_id,
+            signature=record.signature,
+            items=record.items,
+            user_items=next_entries,
+        )
+        return StoredDocumentChecklist(signature=record.signature, items=record.items, user_items=next_entries)
+
+    item_name = parsed["item_name"]
+    value_index = parsed["value_index"]
+    updated_collection = _remove_ai_value_from_collection(record.items, item_name, value_index)
+    if updated_collection is None:
+        raise HTTPException(status_code=404, detail="Checklist item not found.")
+    _DOCUMENT_CHECKLIST_STORE.set(
+        case_id,
+        signature=record.signature,
+        items=updated_collection,
+        user_items=record.user_items,
+    )
+    await _refresh_cache(record.signature, updated_collection)
+    return StoredDocumentChecklist(signature=record.signature, items=updated_collection, user_items=record.user_items)
+
+
+def _build_combined_signature(record: StoredDocumentChecklist) -> str:
+    if not record.user_items:
+        return record.signature
+    digest = hashlib.sha256(record.signature.encode("utf-8"))
+    for entry in sorted(record.user_items, key=lambda item: item.id):
+        digest.update(entry.id.encode("utf-8"))
+        digest.update(entry.category_id.encode("utf-8"))
+        digest.update(entry.value.encode("utf-8"))
+        digest.update(str(entry.document_id or "").encode("utf-8"))
+        digest.update(str(entry.start_offset or "").encode("utf-8"))
+        digest.update(str(entry.end_offset or "").encode("utf-8"))
+    return f"{record.signature}:{digest.hexdigest()}"
 
 
 def _validate_evidence_offsets(

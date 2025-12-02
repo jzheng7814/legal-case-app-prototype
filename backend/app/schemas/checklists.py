@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
@@ -77,5 +77,74 @@ class ChecklistCollection(BaseModel):
 
 class SummaryChecklistExtractionPayload(ChecklistCollection):
     """Structured output for summary-driven checklist extraction."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ChecklistCategoryValue(BaseModel):
+    id: str
+    value: str
+    text: Optional[str] = None
+    document_id: Optional[int] = Field(
+        None,
+        serialization_alias="documentId",
+        validation_alias=AliasChoices("documentId", "document_id"),
+    )
+    start_offset: Optional[int] = Field(
+        None,
+        ge=0,
+        serialization_alias="startOffset",
+        validation_alias=AliasChoices("startOffset", "start_offset"),
+    )
+    end_offset: Optional[int] = Field(
+        None,
+        ge=0,
+        serialization_alias="endOffset",
+        validation_alias=AliasChoices("endOffset", "end_offset"),
+    )
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ChecklistCategory(BaseModel):
+    id: str
+    label: str
+    color: str
+    values: List[ChecklistCategoryValue] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ChecklistCategoryCollection(BaseModel):
+    signature: str
+    categories: List[ChecklistCategory]
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ChecklistItemCreateRequest(BaseModel):
+    category_id: str = Field(..., serialization_alias="categoryId", validation_alias=AliasChoices("categoryId", "category_id"))
+    text: str
+    document_id: Optional[int] = Field(
+        None,
+        serialization_alias="documentId",
+        validation_alias=AliasChoices("documentId", "document_id"),
+    )
+    start_offset: Optional[int] = Field(
+        None,
+        ge=0,
+        serialization_alias="startOffset",
+        validation_alias=AliasChoices("startOffset", "start_offset"),
+    )
+    end_offset: Optional[int] = Field(
+        None,
+        ge=0,
+        serialization_alias="endOffset",
+        validation_alias=AliasChoices("endOffset", "end_offset"),
+    )
+
+    @property
+    def value(self) -> str:
+        return self.text
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)

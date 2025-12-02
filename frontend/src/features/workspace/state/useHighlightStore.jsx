@@ -36,9 +36,14 @@ const useHighlightStore = ({ summary, documents }) => {
     const [highlightRects, setHighlightRects] = useState([]);
     const [rejectedSuggestions, setRejectedSuggestions] = useState(() => new Set());
     const cssHighlightHandleRef = useRef(null);
+    const [interactionMode, setInteractionModeState] = useState('canvas');
 
     const registerChatHelpers = useCallback((helpers) => {
         chatHelpersRef.current = { ...DEFAULT_CHAT_HELPERS, ...helpers };
+    }, []);
+
+    const setInteractionMode = useCallback((mode) => {
+        setInteractionModeState(mode === 'checklist' ? 'checklist' : 'canvas');
     }, []);
 
     const clearCssHighlight = useCallback(() => {
@@ -81,6 +86,12 @@ const useHighlightStore = ({ summary, documents }) => {
         }
     }, []);
 
+    useEffect(() => {
+        if (interactionMode !== 'canvas') {
+            setShowTabTooltip(false);
+        }
+    }, [interactionMode]);
+
 
     const resetSelectionState = useCallback(() => {
         setSelectedText('');
@@ -111,9 +122,9 @@ const useHighlightStore = ({ summary, documents }) => {
             type: 'selection',
             range: { start: offsets.start, end: offsets.end }
         });
-        setShowTabTooltip(!alreadyInContext);
+        setShowTabTooltip(interactionMode === 'canvas' && !alreadyInContext);
         updateTooltip(range.getBoundingClientRect());
-    }, [updateTooltip]);
+    }, [interactionMode, updateTooltip]);
 
     const captureDocumentSelection = useCallback((range, container, documentId) => {
         const offsets = getOffsetsForRange(container, range);
@@ -129,9 +140,9 @@ const useHighlightStore = ({ summary, documents }) => {
             range: { start: offsets.start, end: offsets.end },
             documentId
         });
-        setShowTabTooltip(!alreadyInContext);
+        setShowTabTooltip(interactionMode === 'canvas' && !alreadyInContext);
         updateTooltip(range.getBoundingClientRect());
-    }, [updateTooltip]);
+    }, [interactionMode, updateTooltip]);
 
     useEffect(() => {
         const handleSelectionChange = () => {
@@ -153,7 +164,7 @@ const useHighlightStore = ({ summary, documents }) => {
                         type: 'selection',
                         range: { start: selectionStart, end: selectionEnd }
                     });
-                    setShowTabTooltip(!alreadyInContext);
+                    setShowTabTooltip(interactionMode === 'canvas' && !alreadyInContext);
                     const rect = summaryEl.getBoundingClientRect();
                     setTooltipPosition({ x: rect.left + rect.width / 2, y: rect.top - 30 });
                     return;
@@ -221,7 +232,12 @@ const useHighlightStore = ({ summary, documents }) => {
 
     useEffect(() => {
         const handleKeyDown = (event) => {
-            if (event.key === 'Tab' && !summary.isEditMode && (selectedText || selectedDocumentText)) {
+            if (
+                interactionMode === 'canvas' &&
+                event.key === 'Tab' &&
+                !summary.isEditMode &&
+                (selectedText || selectedDocumentText)
+            ) {
                 event.preventDefault();
                 setShowTabTooltip(false);
                 if (selectedText && selectedRange) {
@@ -254,7 +270,7 @@ const useHighlightStore = ({ summary, documents }) => {
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [documents.documents, documents.selectedDocument, resetSelectionState, selectedDocumentRange, selectedDocumentText, selectedRange, selectedText, summary.isEditMode]);
+    }, [documents.documents, documents.selectedDocument, interactionMode, resetSelectionState, selectedDocumentRange, selectedDocumentText, selectedRange, selectedText, summary.isEditMode]);
 
     useEffect(() => {
         if (summary.isEditMode) {
@@ -561,7 +577,10 @@ const useHighlightStore = ({ summary, documents }) => {
         rejectSuggestion,
         startSuggestionDiscussion,
         handleContextClick,
-        clearActiveHighlight
+        clearActiveHighlight,
+        setInteractionMode,
+        interactionMode,
+        clearSelection: resetSelectionState
     }), [
         activeHighlight,
         applySuggestion,
@@ -585,7 +604,10 @@ const useHighlightStore = ({ summary, documents }) => {
         showTabTooltip,
         startSuggestionDiscussion,
         tooltipPosition,
-        clearActiveHighlight
+        clearActiveHighlight,
+        interactionMode,
+        setInteractionMode,
+        resetSelectionState
     ]);
 
     return value;

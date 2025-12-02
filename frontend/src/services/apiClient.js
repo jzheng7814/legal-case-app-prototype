@@ -57,6 +57,23 @@ export async function fetchSuggestions(caseId, body) {
     });
 }
 
+export async function fetchChecklist(caseId) {
+    return request(`/cases/${caseId}/checklist`);
+}
+
+export async function addChecklistItem(caseId, body) {
+    return request(`/cases/${caseId}/checklist/items`, {
+        method: 'POST',
+        body: JSON.stringify(body)
+    });
+}
+
+export async function deleteChecklistItem(caseId, valueId) {
+    return request(`/cases/${caseId}/checklist/items/${encodeURIComponent(valueId)}`, {
+        method: 'DELETE'
+    });
+}
+
 export async function createChatSession() {
     return request('/chat/session', { method: 'POST' });
 }

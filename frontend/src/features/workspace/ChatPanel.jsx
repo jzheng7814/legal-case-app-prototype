@@ -100,7 +100,7 @@ const ChatPanel = () => {
     const canDeleteChat = Boolean(currentChatId) && !isNewChat;
 
     return (
-        <div className="w-1/3 bg-white flex flex-col">
+        <div className="bg-white flex flex-col h-full min-w-0">
             <div className="border-b px-4 py-4">
                 <h2 className="text-lg font-semibold">AI Legal Assistant</h2>
             </div>

@@ -10,9 +10,22 @@ from typing import Any, Dict, Optional, Protocol
 from pydantic import ValidationError
 
 from app.schemas.checklists import ChecklistCollection
+
 logger = logging.getLogger(__name__)
 
 DocumentChecklistPayload = ChecklistCollection
+
+
+@dataclass(frozen=True)
+class StoredUserChecklistItem:
+    """User-authored checklist entry stored outside the AI extraction results."""
+
+    id: str
+    category_id: str
+    value: str
+    document_id: Optional[int]
+    start_offset: Optional[int]
+    end_offset: Optional[int]
 
 
 @dataclass(frozen=True)
@@ -21,6 +34,7 @@ class StoredDocumentChecklist:
 
     signature: str
     items: DocumentChecklistPayload
+    user_items: list[StoredUserChecklistItem]
 
 
 class DocumentChecklistStore(Protocol):
@@ -29,7 +43,14 @@ class DocumentChecklistStore(Protocol):
     def get(self, case_id: str, *, signature: Optional[str] = None) -> Optional[StoredDocumentChecklist]:
         """Return the stored checklist for a case, optionally validating a signature."""
 
-    def set(self, case_id: str, *, signature: str, items: DocumentChecklistPayload) -> None:
+    def set(
+        self,
+        case_id: str,
+        *,
+        signature: str,
+        items: DocumentChecklistPayload,
+        user_items: Optional[list[StoredUserChecklistItem]] = None,
+    ) -> None:
         """Persist a checklist for a case."""
 
     def clear(self, case_id: str) -> None:
@@ -53,6 +74,7 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
                 return None
             stored_signature = raw_entry.get("signature")
             items = raw_entry.get("items")
+            user_items = raw_entry.get("userItems") or raw_entry.get("user_items") or []
         if not isinstance(stored_signature, str) or items is None:
             logger.debug("Checklist store entry for case %s missing expected structure.", key)
             return None
@@ -60,7 +82,11 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
         if collection is None:
             logger.debug("Checklist store entry for case %s failed validation.", key)
             return None
-        record = StoredDocumentChecklist(signature=stored_signature, items=collection)
+        record = StoredDocumentChecklist(
+            signature=stored_signature,
+            items=collection,
+            user_items=_coerce_user_items(user_items),
+        )
         if signature and record.signature != signature:
             logger.debug(
                 "Checklist store signature mismatch for case %s (expected %s, found %s).",
@@ -71,9 +97,30 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
             return None
         return record
 
-    def set(self, case_id: str, *, signature: str, items: DocumentChecklistPayload) -> None:
+    def set(
+        self,
+        case_id: str,
+        *,
+        signature: str,
+        items: DocumentChecklistPayload,
+        user_items: Optional[list[StoredUserChecklistItem]] = None,
+    ) -> None:
         key = _normalize_case_id(case_id)
-        record = {"signature": signature, "items": items.model_dump(by_alias=True)}
+        record = {
+            "signature": signature,
+            "items": items.model_dump(by_alias=True),
+            "userItems": [
+                {
+                    "id": entry.id,
+                    "categoryId": entry.category_id,
+                    "value": entry.value,
+                    "documentId": entry.document_id,
+                    "startOffset": entry.start_offset,
+                    "endOffset": entry.end_offset,
+                }
+                for entry in (user_items or [])
+            ],
+        }
         with self._lock:
             payload = self._load()
             payload[key] = record
@@ -149,3 +196,51 @@ def _normalize_case_id(case_id: str) -> str:
         return str(int(case_id))
     except (TypeError, ValueError):
         return str(case_id)
+
+
+def _coerce_user_items(raw_items: Any) -> list[StoredUserChecklistItem]:
+    if not isinstance(raw_items, list):
+        return []
+    results: list[StoredUserChecklistItem] = []
+    for entry in raw_items:
+        if not isinstance(entry, dict):
+            continue
+        item_id = entry.get("id")
+        category_id = entry.get("category_id") or entry.get("categoryId")
+        value = entry.get("value")
+        document_id = entry.get("document_id") or entry.get("documentId")
+        start_offset = entry.get("start_offset") or entry.get("startOffset")
+        end_offset = entry.get("end_offset") or entry.get("endOffset")
+        if not isinstance(item_id, str) or not isinstance(category_id, str) or not isinstance(value, str):
+            continue
+        doc_id_int: Optional[int]
+        if document_id is None:
+            doc_id_int = None
+        else:
+            try:
+                doc_id_int = int(document_id)
+            except (TypeError, ValueError):
+                doc_id_int = None
+        start_int = _coerce_optional_int(start_offset)
+        end_int = _coerce_optional_int(end_offset)
+        results.append(
+            StoredUserChecklistItem(
+                id=item_id,
+                category_id=category_id,
+                value=value,
+                document_id=doc_id_int,
+                start_offset=start_int,
+                end_offset=end_int,
+            )
+        )
+    return results
+
+
+def _coerce_optional_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed
