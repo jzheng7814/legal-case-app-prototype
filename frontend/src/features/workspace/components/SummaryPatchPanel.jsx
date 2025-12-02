@@ -64,11 +64,11 @@ const SummaryPatchPanel = ({ panelRef }) => {
     };
 
     return (
-        <div ref={panelRef} className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
+        <div ref={panelRef} className="mt-3 rounded-md border border-[var(--color-border)] bg-[var(--color-info-soft)] px-3 py-2 text-sm">
             <div className="flex items-center justify-between">
                 <div>
-                    <p className="font-semibold text-blue-900">Summary changes</p>
-                    <p className="text-xs text-blue-700">Review what the assistant modified before editing again.</p>
+                    <p className="font-semibold text-[var(--color-text-primary)]">Summary changes</p>
+                    <p className="text-xs text-[var(--color-text-secondary)]">Review what the assistant modified before editing again.</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <button
@@ -77,8 +77,8 @@ const SummaryPatchPanel = ({ panelRef }) => {
                         disabled={disableActions || entries.every((patch) => patch.status !== 'applied')}
                         className={`flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold ${
                             disableActions || entries.every((patch) => patch.status !== 'applied')
-                                ? 'text-blue-400 cursor-not-allowed'
-                                : 'text-blue-700 hover:text-blue-900'
+                                ? 'text-[var(--color-text-muted)] cursor-not-allowed'
+                                : 'text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]'
                         }`}
                     >
                         <RotateCcw className="h-3.5 w-3.5" />
@@ -87,7 +87,7 @@ const SummaryPatchPanel = ({ panelRef }) => {
                     <button
                         type="button"
                         onClick={dismissPatchAction}
-                        className="text-xs font-semibold text-blue-500 hover:text-blue-700"
+                        className="text-xs font-semibold text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
                     >
                         Dismiss
                     </button>
@@ -95,7 +95,7 @@ const SummaryPatchPanel = ({ panelRef }) => {
             </div>
 
             {patchAction.isStale && (
-                <div className="mt-2 flex items-center gap-1 text-xs text-amber-700">
+                <div className="mt-2 flex items-center gap-1 text-xs text-[var(--color-text-warning)]">
                     <AlertTriangle className="h-3.5 w-3.5" />
                     A newer edit changed the summary. Jump and revert controls are disabled, but the history is preserved below.
                 </div>
@@ -110,13 +110,13 @@ const SummaryPatchPanel = ({ panelRef }) => {
                             <li
                                 key={patch.id}
                                 className={`rounded border px-3 py-2 ${
-                                    isActive ? 'border-blue-400 bg-white' : 'border-blue-100 bg-white'
+                                    isActive ? 'border-[var(--color-accent)] bg-[var(--color-surface-panel)]' : 'border-[var(--color-border)] bg-[var(--color-surface-panel)]'
                                 }`}
                             >
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="text-xs font-semibold text-blue-900">Change {patch.ordinal}</p>
-                                        <p className="text-xs text-blue-700">{patch.description}</p>
+                                        <p className="text-xs font-semibold text-[var(--color-text-primary)]">Change {patch.ordinal}</p>
+                                        <p className="text-xs text-[var(--color-text-secondary)]">{patch.description}</p>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button
@@ -124,7 +124,7 @@ const SummaryPatchPanel = ({ panelRef }) => {
                                             onClick={() => handleJump(patch)}
                                             disabled={!canInteract}
                                             className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-                                                canInteract ? 'text-blue-700 hover:text-blue-900' : 'text-blue-300'
+                                                canInteract ? 'text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]' : 'text-[var(--color-text-muted)]'
                                             }`}
                                         >
                                             <MapPin className="h-3.5 w-3.5" />
@@ -135,7 +135,7 @@ const SummaryPatchPanel = ({ panelRef }) => {
                                             onClick={() => handleRevert(patch)}
                                             disabled={!canInteract}
                                             className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-                                                canInteract ? 'text-blue-700 hover:text-blue-900' : 'text-blue-300'
+                                                canInteract ? 'text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]' : 'text-[var(--color-text-muted)]'
                                             }`}
                                         >
                                             <Undo2 className="h-3.5 w-3.5" />
@@ -145,17 +145,17 @@ const SummaryPatchPanel = ({ panelRef }) => {
                                 </div>
                                 <div className="mt-2 flex flex-wrap gap-2 text-xs">
                                     {patch.deleteCount > 0 && (
-                                        <span className="rounded bg-red-50 px-2 py-0.5 text-red-700 line-through">
+                                        <span className="rounded bg-[var(--color-danger-soft)] px-2 py-0.5 text-[var(--color-danger)] line-through">
                                             {patch.deletedText || '(whitespace)'}
                                         </span>
                                     )}
                                     {patch.insertText && (
-                                        <span className="rounded bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                                        <span className="rounded bg-[var(--color-success-soft)] px-2 py-0.5 text-[var(--color-text-success)]">
                                             {patch.insertText}
                                         </span>
                                     )}
                                     {patch.status === 'reverted' && (
-                                        <span className="rounded bg-gray-200 px-2 py-0.5 text-gray-700">Reverted</span>
+                                        <span className="rounded bg-[var(--color-surface-muted)] px-2 py-0.5 text-[var(--color-text-secondary)]">Reverted</span>
                                     )}
                                 </div>
                             </li>

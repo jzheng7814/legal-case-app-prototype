@@ -16,9 +16,6 @@ const SummaryPanel = () => {
         isLoadingSuggestions,
         summaryRef,
         suggestionsError,
-        documentChecklists,
-        documentChecklistStatus,
-        summaryChecklists,
         versionHistory,
         activeVersionId,
         saveCurrentVersion,
@@ -28,7 +25,6 @@ const SummaryPanel = () => {
         clearPatchPreview
     } = useSummary();
     const documents = useDocuments();
-    const { documentRef, setSelectedDocument } = documents;
     const activeCaseId = documents.caseId;
     const {
         renderSummaryWithSuggestions,
@@ -160,19 +156,19 @@ const SummaryPanel = () => {
     }), [versionHistory]);
 
     return (
-        <div className="flex-1 bg-white flex flex-col overflow-hidden">
-            <div className="border-b p-4 space-y-3">
+        <div className="flex-1 bg-[var(--color-surface-panel)] flex flex-col overflow-hidden border-l border-[var(--color-border)]">
+            <div className="border-b border-[var(--color-border)] p-4 space-y-3 bg-[var(--color-surface-panel)]">
                 <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold">Case Summary</h2>
+                    <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Case Summary</h2>
                     <div className="flex items-center space-x-2">
                         {!summaryText && isEditMode && (
-                            <span className="text-xs text-gray-400 italic">(Generate disabled in edit mode)</span>
+                            <span className="text-xs text-[var(--color-text-muted)] italic">(Generate disabled in edit mode)</span>
                         )}
                         {canGenerateSummary && (
                             <button
                                 onClick={handleGenerateSummary}
                                 disabled={isGeneratingSummary || documents.isLoadingDocuments}
-                                className="flex items-center px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+                                className="flex items-center px-3 py-1 text-sm bg-[var(--color-accent)] text-[var(--color-text-inverse)] rounded hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
                             >
                                 <Sparkles className="h-4 w-4 mr-1" />
                                 {isGeneratingSummary ? 'Generating...' : summaryText ? 'Regenerate with AI' : 'Generate with AI'}
@@ -182,7 +178,7 @@ const SummaryPanel = () => {
                             <button
                                 onClick={handleRefreshSuggestions}
                                 disabled={isLoadingSuggestions}
-                                className="flex items-center px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                                className="flex items-center px-3 py-1 text-sm bg-[var(--color-accent)] text-[var(--color-text-inverse)] rounded hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
                             >
                                 <Sparkles className="h-4 w-4 mr-1" />
                                 {isLoadingSuggestions ? 'Refreshing...' : 'Refresh Suggestions'}
@@ -190,10 +186,10 @@ const SummaryPanel = () => {
                         )}
                         <button
                             onClick={toggleEditMode}
-                            className={`flex items-center px-3 py-1 text-sm rounded ${
+                            className={`flex items-center px-3 py-1 text-sm rounded transition ${
                                 isEditMode
-                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                    : 'bg-gray-600 text-white hover:bg-gray-700'
+                                    ? 'bg-[var(--color-accent)] text-[var(--color-text-inverse)] hover:bg-[var(--color-accent-hover)]'
+                                    : 'bg-[var(--color-surface-muted)] text-[var(--color-text-primary)] hover:bg-[var(--color-surface-muted-hover)]'
                             }`}
                         >
                             <Edit3 className="h-4 w-4 mr-1" />
@@ -205,7 +201,7 @@ const SummaryPanel = () => {
                     <select
                         value={activeVersionId || ''}
                         onChange={handleVersionSelect}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 px-3 py-2 border border-[var(--color-input-border)] rounded-md text-sm bg-[var(--color-input-bg)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                     >
                         <option value="">Current Draft</option>
                         {versionOptions.map((version) => (
@@ -216,14 +212,14 @@ const SummaryPanel = () => {
                     </select>
                     <button
                         onClick={saveCurrentVersion}
-                        className="p-2 text-blue-600 hover:text-blue-800"
+                        className="p-2 text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
                         title="Save current version"
                     >
                         <Plus className="h-4 w-4" />
                     </button>
                 </div>
                 {(localError || suggestionsError) && (
-                    <div className="mt-2 text-xs text-red-600">
+                    <div className="mt-2 text-xs text-[var(--color-danger)]">
                         {localError || suggestionsError?.message}
                     </div>
                 )}
@@ -240,20 +236,20 @@ const SummaryPanel = () => {
                                 value={summaryText}
                                 onChange={(event) => setSummaryText(event.target.value)}
                                 placeholder="Write your case summary here..."
-                                className="w-full h-full min-h-0 resize-none border border-gray-300 rounded-md px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 overflow-auto"
+                                className="w-full h-full min-h-0 resize-none border border-[var(--color-input-border)] rounded-md px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] overflow-auto bg-[var(--color-input-bg)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
                             />
                         ) : (
                             <div
                                 ref={summaryRef}
-                                className="relative h-full w-full border border-gray-300 rounded-md px-3 py-2 text-sm leading-relaxed cursor-text overflow-y-auto whitespace-pre-wrap"
+                                className="relative h-full w-full border border-[var(--color-border)] rounded-md px-3 py-2 text-sm leading-relaxed cursor-text overflow-y-auto whitespace-pre-wrap bg-[var(--color-surface-panel)] text-[var(--color-text-primary)]"
                             >
                                 {summaryText ? renderSummaryWithSuggestions(summaryText) : (
-                                    <span className="text-gray-500">Your summary will appear here...</span>
+                                    <span className="text-[var(--color-text-muted)]">Your summary will appear here...</span>
                                 )}
                                 {activeHighlight?.useOverlay && activeHighlight.type === 'summary' && highlightRects.map((rect, index) => (
                                     <span
                                         key={`summary-highlight-${index}`}
-                                        className="pointer-events-none absolute z-10 rounded-sm bg-yellow-200/70"
+                                        className="pointer-events-none absolute z-10 rounded-sm bg-[var(--color-surface-highlight-yellow)]"
                                         style={{
                                             top: rect.top,
                                             left: rect.left,
@@ -265,7 +261,7 @@ const SummaryPanel = () => {
                                 {patchOverlayRects.map((rect, index) => (
                                     <span
                                         key={`patch-preview-${index}`}
-                                        className="pointer-events-none absolute z-30 rounded-sm bg-blue-200/60"
+                                        className="pointer-events-none absolute z-30 rounded-sm bg-[var(--color-surface-highlight-blue)]"
                                         style={{
                                             top: rect.top,
                                             left: rect.left,
@@ -276,7 +272,7 @@ const SummaryPanel = () => {
                                 ))}
                                 {patchOverlayMeta?.deletedText && patchOverlayRects[0] && (
                                     <div
-                                        className="pointer-events-none absolute z-40 rounded bg-white/80 px-2 py-0.5 text-xs font-semibold text-red-700 line-through"
+                                        className="pointer-events-none absolute z-40 rounded bg-[var(--color-surface-panel-ghost)] px-2 py-0.5 text-xs font-semibold text-[var(--color-danger)] line-through"
                                         style={{
                                             top: Math.max(0, patchOverlayRects[0].top - 20),
                                             left: patchOverlayRects[0].left
@@ -293,7 +289,7 @@ const SummaryPanel = () => {
 
             {showTabTooltip && (selectedText || selectedDocumentText) && (
                 <div
-                    className="fixed z-50 bg-black text-white text-xs py-1 px-2 rounded pointer-events-none"
+                    className="fixed z-50 bg-[var(--color-overlay-scrim)] text-[var(--color-text-inverse)] text-xs py-1 px-2 rounded pointer-events-none"
                     style={{
                         left: tooltipPosition.x - 50,
                         top: tooltipPosition.y,

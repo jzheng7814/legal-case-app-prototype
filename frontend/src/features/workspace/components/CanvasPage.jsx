@@ -13,11 +13,11 @@ const CanvasPage = ({ isActive }) => {
     }, [isActive, setInteractionMode]);
 
     return (
-        <div className="flex flex-1 overflow-hidden w-full">
-            <div className="h-full border-r bg-white flex flex-col basis-1/4 grow min-w-0">
+        <div className="flex flex-1 overflow-hidden w-full bg-[var(--color-surface-panel-alt)]">
+            <div className="h-full border-r border-[var(--color-border)] bg-[var(--color-surface-panel)] flex flex-col basis-1/4 grow min-w-0">
                 <ChatPanel />
             </div>
-            <div className="relative h-full bg-white flex flex-col basis-3/4 grow min-w-0">
+            <div className="relative h-full bg-[var(--color-surface-panel)] flex flex-col basis-3/4 grow min-w-0">
                 <SummaryPanel />
             </div>
         </div>

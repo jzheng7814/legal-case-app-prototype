@@ -24,27 +24,27 @@ const SuggestionPopup = () => {
 
     return (
         <div
-            className={`fixed z-50 bg-white border border-gray-200 shadow-lg rounded-lg p-4 max-w-sm suggestion-popup ${
-                persistentSuggestionPopup ? 'border-blue-400' : ''
+            className={`fixed z-50 bg-[var(--color-surface-panel)] border border-[var(--color-border)] shadow-lg rounded-lg p-4 max-w-sm suggestion-popup ${
+                persistentSuggestionPopup ? 'border-[var(--color-accent)]' : ''
             }`}
             style={{ left: hoverPosition.x, top: hoverPosition.y }}
             onMouseEnter={handlePopupEnter}
             onMouseLeave={persistentSuggestionPopup ? undefined : handlePopupLeave}
         >
             <div className="mb-3">
-                <div className="text-sm font-medium mb-1">
+                <div className="text-sm font-medium mb-1 text-[var(--color-text-primary)]">
                     AI Suggestion{persistentSuggestionPopup ? ' (Click outside to close)' : ':'}
                 </div>
-                <div className="text-xs text-gray-600">
+                <div className="text-xs text-[var(--color-text-muted)]">
                     {activeSuggestion.comment}
                 </div>
             </div>
 
             <div className="mb-3 text-xs">
-                <div className="line-through text-red-600">
+                <div className="line-through text-[var(--color-danger)]">
                     {activeSuggestion.originalText}
                 </div>
-                <div className="text-green-600">
+                <div className="text-[var(--color-text-success)]">
                     → {activeSuggestion.text}
                 </div>
             </div>
@@ -56,7 +56,7 @@ const SuggestionPopup = () => {
                         setPersistentSuggestionPopup(null);
                         setHighlightedContext(null);
                     }}
-                    className="flex items-center px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                    className="flex items-center px-2 py-1 text-xs bg-[var(--color-success)] text-[var(--color-text-inverse)] rounded hover:bg-[var(--color-success-hover)]"
                 >
                     <Check className="h-3 w-3 mr-1" />
                     Accept
@@ -67,14 +67,14 @@ const SuggestionPopup = () => {
                         setPersistentSuggestionPopup(null);
                         setHighlightedContext(null);
                     }}
-                    className="flex items-center px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                    className="flex items-center px-2 py-1 text-xs bg-[var(--color-danger)] text-[var(--color-text-inverse)] rounded hover:bg-[var(--color-danger-hover)]"
                 >
                     <X className="h-3 w-3 mr-1" />
                     Reject
                 </button>
                 <button
                     onClick={() => startSuggestionDiscussion(activeSuggestion)}
-                    className="flex items-center px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                    className="flex items-center px-2 py-1 text-xs bg-[var(--color-accent)] text-[var(--color-text-inverse)] rounded hover:bg-[var(--color-accent-hover)]"
                 >
                     <MessageCircle className="h-3 w-3 mr-1" />
                     Discuss

@@ -55,32 +55,32 @@ const ChecklistColumn = ({
     }, [items]);
 
     return (
-        <div className="flex flex-col min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm">
-            <div className="flex items-center gap-2 border-b px-3 py-2">
-                <ClipboardList className="h-4 w-4 text-gray-500" />
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">{title}</h3>
+        <div className="flex flex-col min-h-0 bg-[var(--color-surface-panel)] border border-[var(--color-border)] rounded-lg shadow-sm">
+            <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
+                <ClipboardList className="h-4 w-4 text-[var(--color-text-muted)]" />
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">{title}</h3>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
                 {entries.length === 0 && (
-                    <p className="text-xs text-gray-500">No checklist items available yet.</p>
+                    <p className="text-xs text-[var(--color-text-muted)]">No checklist items available yet.</p>
                 )}
                 {entries.map(({ itemName, extraction }) => {
                     const extracted = Array.isArray(extraction?.extracted) ? extraction.extracted : [];
                     return (
-                        <div key={itemName} className="rounded border border-gray-100 bg-gray-50/80 px-3 py-2">
+                        <div key={itemName} className="rounded border border-[var(--color-border)] bg-[var(--color-surface-panel-alt)] px-3 py-2">
                             <div className="flex items-start justify-between gap-2">
                                 <div>
-                                    <p className="text-sm font-semibold text-gray-800">{formatLabel(itemName)}</p>
+                                    <p className="text-sm font-semibold text-[var(--color-text-primary)]">{formatLabel(itemName)}</p>
                                 </div>
                             </div>
                             {extracted.length === 0 ? (
-                                <p className="mt-2 text-xs italic text-gray-400">No extracted values.</p>
+                                <p className="mt-2 text-xs italic text-[var(--color-text-muted)]">No extracted values.</p>
                             ) : (
                                 <div className="mt-2 space-y-2">
                                     {extracted.map((entry, index) => (
-                                        <div key={`${itemName}-${index}`} className="rounded bg-white p-2 shadow-sm border border-gray-200">
+                                        <div key={`${itemName}-${index}`} className="rounded bg-[var(--color-surface-panel)] p-2 shadow-sm border border-[var(--color-border)]">
                                             <div className="flex items-start justify-between gap-2">
-                                                <p className="text-sm text-gray-900">{entry.value || '--'}</p>
+                                                <p className="text-sm text-[var(--color-text-primary)]">{entry.value || '--'}</p>
                                                 <button
                                                     type="button"
                                                     onClick={() => onAdd({
@@ -90,7 +90,7 @@ const ChecklistColumn = ({
                                                         source
                                                     })}
                                                     aria-label="Pin checklist item for chat"
-                                                    className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded bg-blue-600 text-xs font-medium text-white hover:bg-blue-700"
+                                                    className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded bg-[var(--color-accent)] text-xs font-medium text-[var(--color-text-inverse)] hover:bg-[var(--color-accent-hover)]"
                                                 >
                                                     +
                                                 </button>
@@ -127,7 +127,7 @@ const ChecklistColumn = ({
                                                             verified: isVerified
                                                         };
                                                         return (
-                                                            <li key={`${itemName}-evidence-${evidenceIndex}`} className="text-xs text-gray-600">
+                                                            <li key={`${itemName}-evidence-${evidenceIndex}`} className="text-xs text-[var(--color-text-muted)]">
                                                                 <button
                                                                     type="button"
                                                                     disabled={!canNavigate}
@@ -139,19 +139,19 @@ const ChecklistColumn = ({
                                                                     }}
                                                                     className={`w-full text-left rounded px-2 py-1 transition ${
                                                                         canNavigate
-                                                                            ? 'hover:bg-yellow-100 focus:outline-none focus:ring-1 focus:ring-yellow-400'
-                                                                            : 'cursor-default text-gray-500'
+                                                                            ? 'hover:bg-[var(--color-warning-soft)] focus:outline-none focus:ring-1 focus:ring-[var(--color-warning-soft)]'
+                                                                            : 'cursor-default text-[var(--color-text-muted)]'
                                                                     }`}
                                                                 >
-                                                                    <span className="block italic text-gray-700">
+                                                                    <span className="block italic text-[var(--color-text-secondary)]">
                                                                         “{evidenceItem?.text || 'N/A'}”
                                                                     </span>
-                                                                    <span className="block text-[11px] text-gray-500">
+                                                                    <span className="block text-[11px] text-[var(--color-text-muted)]">
                                                                         {resolvedLabel}
                                                                         {offsetLabel}
                                                                     </span>
                                                                     {!isVerified && (
-                                                                        <span className="mt-0.5 block text-[11px] text-amber-600">
+                                                                        <span className="mt-0.5 block text-[11px] text-[var(--color-text-warning)]">
                                                                             Location not auto-verified—opening the document so you can confirm manually.
                                                                         </span>
                                                                     )}
@@ -191,13 +191,15 @@ const ChecklistPanel = ({
     }
 
     const documentStatusClass =
-        documentChecklistStatus === 'error' ? 'text-red-600' : 'text-gray-500';
+        documentChecklistStatus === 'error'
+            ? 'text-[var(--color-danger)]'
+            : 'text-[var(--color-text-muted)]';
 
     return (
-        <div className="flex-1 border-t bg-gray-100 px-4 py-4 flex flex-col min-h-0">
+        <div className="flex-1 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-alt)] px-4 py-4 flex flex-col min-h-0">
             <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-gray-700">Extracted Checklist Items</h2>
-                <p className="text-xs text-gray-500">Click "+" to pin items for conversation.</p>
+                <h2 className="text-sm font-semibold text-[var(--color-text-secondary)]">Extracted Checklist Items</h2>
+                <p className="text-xs text-[var(--color-text-muted)]">Click "+" to pin items for conversation.</p>
             </div>
             <div className="mt-3 grid grid-cols-1 gap-3 overflow-hidden md:grid-cols-2 flex-1 min-h-0">
                 <ChecklistColumn

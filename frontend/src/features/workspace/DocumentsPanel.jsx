@@ -58,10 +58,10 @@ const DocumentsPanel = () => {
     }, [activeChecklistHighlights, documentRef, currentDocumentText]);
 
     return (
-        <div className="flex-1 bg-white flex flex-col border-l">
-            <div className="border-b px-4 py-3">
-                <h2 className="text-base font-semibold text-gray-800">Document Viewer</h2>
-                <p className="text-xs text-gray-500">Select spans to add checklist entries. Highlights show captured facts.</p>
+        <div className="flex-1 bg-[var(--color-surface-panel)] flex flex-col border-l border-[var(--color-border)]">
+            <div className="border-b border-[var(--color-border)] px-4 py-3">
+                <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Document Viewer</h2>
+                <p className="text-xs text-[var(--color-text-muted)]">Select spans to add checklist entries. Highlights show captured facts.</p>
             </div>
 
             <div className="flex-1 p-4 flex flex-col space-y-4 min-h-0">
@@ -74,7 +74,7 @@ const DocumentsPanel = () => {
                                 setSelectedDocument(nextValue);
                             }
                         }}
-                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="px-3 py-2 border border-[var(--color-input-border)] rounded-md bg-[var(--color-input-bg)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                     >
                         {documents.map((doc) => (
                             <option key={doc.id} value={String(doc.id)}>
@@ -84,7 +84,7 @@ const DocumentsPanel = () => {
                         ))}
                     </select>
                 ) : (
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-[var(--color-text-muted)]">
                         {isLoadingDocuments ? 'Loading documents...' : 'No documents loaded'}
                     </div>
                 )}
@@ -92,16 +92,16 @@ const DocumentsPanel = () => {
                 <div className="relative flex-1 min-h-0">
                     <div
                         ref={documentRef}
-                        className="relative h-full w-full bg-gray-50 border border-gray-300 rounded-md p-4 overflow-y-auto cursor-text"
+                        className="relative h-full w-full bg-[var(--color-surface-panel-alt)] border border-[var(--color-border)] rounded-md p-4 overflow-y-auto cursor-text"
                     >
-                        <pre className="text-xs leading-relaxed font-mono whitespace-pre-wrap">
+                        <pre className="text-xs leading-relaxed font-mono whitespace-pre-wrap text-[var(--color-text-primary)]">
                             {currentDocumentText}
                         </pre>
                         {categoryHighlights.map((entry) =>
                             entry.rects.map((rect, index) => (
                                 <span
                                     key={`${entry.id}-${index}`}
-                                    className="pointer-events-none absolute rounded-sm border border-white/70"
+                                    className="pointer-events-none absolute rounded-sm border"
                                     style={{
                                         top: rect.top,
                                         left: rect.left,
@@ -109,7 +109,8 @@ const DocumentsPanel = () => {
                                         height: rect.height,
                                         backgroundColor: entry.color,
                                         opacity: 0.25,
-                                        zIndex: 5
+                                        zIndex: 5,
+                                        borderColor: 'var(--color-surface-panel-ghost)'
                                     }}
                                 />
                             ))
@@ -117,7 +118,7 @@ const DocumentsPanel = () => {
                         {activeHighlight?.useOverlay && activeHighlight.type === 'document' && highlightRects.map((rect, index) => (
                             <span
                                 key={`document-highlight-${index}`}
-                                className="pointer-events-none absolute z-10 rounded-sm bg-yellow-200/70"
+                                className="pointer-events-none absolute z-10 rounded-sm bg-[var(--color-surface-highlight-yellow)]"
                                 style={{
                                     top: rect.top,
                                     left: rect.left,

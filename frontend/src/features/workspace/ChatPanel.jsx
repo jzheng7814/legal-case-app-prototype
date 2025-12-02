@@ -100,16 +100,16 @@ const ChatPanel = () => {
     const canDeleteChat = Boolean(currentChatId) && !isNewChat;
 
     return (
-        <div className="bg-white flex flex-col h-full min-w-0">
-            <div className="border-b px-4 py-4">
-                <h2 className="text-lg font-semibold">AI Legal Assistant</h2>
+        <div className="bg-[var(--color-surface-panel)] flex flex-col h-full min-w-0 border-l border-[var(--color-border)]">
+            <div className="border-b border-[var(--color-border)] px-4 py-4">
+                <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">AI Legal Assistant</h2>
             </div>
 
-            <div className="px-4 py-3 flex items-center space-x-2">
+            <div className="px-4 py-3 flex items-center space-x-2 border-b border-[var(--color-border)]">
                 <select
                     value={currentChatId || ''}
                     onChange={handleChatSelect}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 px-3 py-2 border border-[var(--color-input-border)] rounded-md text-sm bg-[var(--color-input-bg)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                 >
                     <option value="">New Conversation</option>
                     {allChats.map((chat) => (
@@ -120,7 +120,7 @@ const ChatPanel = () => {
                 </select>
                 <button
                     onClick={createNewChat}
-                    className="p-2 text-blue-600 hover:text-blue-800"
+                    className="p-2 text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
                     title="New Chat"
                 >
                     <Plus className="h-4 w-4" />
@@ -130,8 +130,8 @@ const ChatPanel = () => {
                     disabled={!canDeleteChat}
                     className={`p-2 ${
                         canDeleteChat
-                            ? 'text-red-600 hover:text-red-800'
-                            : 'text-gray-300 cursor-not-allowed'
+                            ? 'text-[var(--color-danger)] hover:text-[var(--color-danger-hover)]'
+                            : 'text-[var(--color-input-disabled-text)] cursor-not-allowed'
                     }`}
                     title="Delete Current Chat"
                 >
@@ -139,9 +139,9 @@ const ChatPanel = () => {
                 </button>
             </div>
 
-            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-[var(--color-surface-panel)]">
                 {chatMessages.length === 0 ? (
-                    <div className="text-sm text-gray-500 italic">
+                    <div className="text-sm text-[var(--color-text-muted)] italic">
                         Start a conversation to explore AI-driven guidance for your summary.
                     </div>
                 ) : (
@@ -151,10 +151,10 @@ const ChatPanel = () => {
                                 key={message.id}
                                 className={`p-3 rounded-lg text-sm ${
                                     message.type === 'user'
-                                        ? 'bg-blue-600 text-white ml-4'
+                                        ? 'bg-[var(--color-chat-user-bg)] text-[var(--color-chat-user-text)] ml-4'
                                         : message.type === 'ai'
-                                            ? 'bg-gray-100 mr-4'
-                                            : 'bg-yellow-50 text-yellow-800 text-xs'
+                                            ? 'bg-[var(--color-chat-ai-bg)] text-[var(--color-chat-ai-text)] mr-4'
+                                            : 'bg-[var(--color-chat-system-bg)] text-[var(--color-chat-system-text)] text-xs'
                                 }`}
                             >
                                 {renderMessageContent(message.content, message.id)}
@@ -165,22 +165,22 @@ const ChatPanel = () => {
             </div>
 
             {chatContext.length > 0 && (
-                <div className="border-t bg-gray-50">
-                    <div className="px-3 py-2 text-xs font-medium text-gray-700 border-b border-gray-200">Context ({chatContext.length}):</div>
+                <div className="border-t border-[var(--color-border)] bg-[var(--color-surface-panel-alt)]">
+                    <div className="px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] border-b border-[var(--color-border)]">Context ({chatContext.length}):</div>
                     <div className="max-h-32 overflow-y-auto px-3 py-2 space-y-1">
                         {chatContext.map((item, index) => (
                             <div
                                 key={index}
-                                className="text-xs bg-white p-2 rounded border flex items-start justify-between cursor-pointer hover:bg-gray-50"
+                                className="text-xs bg-[var(--color-surface-panel)] p-2 rounded border border-[var(--color-border)] flex items-start justify-between cursor-pointer hover:bg-[var(--color-surface-panel-alt)]"
                                 onClick={() => handleContextClick(item)}
                             >
                                 <div className="flex-1">
-                                    <span className="font-medium text-blue-600">
+                                    <span className="font-medium text-[var(--color-accent)]">
                                         {item.type === 'suggestion' ? 'Suggestion: '
                                             : item.type === 'document-selection' ? `${item.source}: `
                                             : `${item.source}: `}
                                     </span>
-                                    <span className="text-gray-600">
+                                    <span className="text-[var(--color-text-muted)]">
                                         {item.content.substring(0, 60)}...
                                     </span>
                                 </div>
@@ -189,7 +189,7 @@ const ChatPanel = () => {
                                         event.stopPropagation();
                                         removeContextItem(index);
                                     }}
-                                    className="ml-2 text-red-600 hover:text-red-800 p-1"
+                                    className="ml-2 text-[var(--color-danger)] hover:text-[var(--color-danger-hover)] p-1"
                                     title="Remove context item"
                                 >
                                     <X className="h-3 w-3" />
@@ -200,7 +200,7 @@ const ChatPanel = () => {
                 </div>
             )}
 
-            <div className="border-t p-4">
+            <div className="border-t border-[var(--color-border)] p-4 bg-[var(--color-surface-panel)]">
                 <div className="flex space-x-2">
                     <textarea
                         ref={chatInputRef}
@@ -217,12 +217,12 @@ const ChatPanel = () => {
                         placeholder={isEditMode ? 'Chat input disabled in edit mode' : 'Ask about your case summary...'}
                         disabled={isEditMode || isSending}
                         rows={3}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-gray-100 disabled:text-gray-500 resize-none"
+                        className="flex-1 px-3 py-2 border border-[var(--color-input-border)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] text-sm bg-[var(--color-input-bg)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] disabled:bg-[var(--color-input-disabled-bg)] disabled:text-[var(--color-input-disabled-text)] resize-none"
                     />
                     <button
                         onClick={sendChatMessage}
                         disabled={isEditMode || isSending}
-                        className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        className="px-3 py-2 bg-[var(--color-accent)] text-[var(--color-text-inverse)] rounded-md hover:bg-[var(--color-accent-hover)] disabled:bg-[var(--color-surface-muted)] disabled:text-[var(--color-input-disabled-text)] disabled:cursor-not-allowed"
                     >
                         <Send className="h-4 w-4" />
                     </button>

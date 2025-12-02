@@ -228,7 +228,7 @@ const useHighlightStore = ({ summary, documents }) => {
             document.removeEventListener('selectionchange', handleSelectionChange);
             document.removeEventListener('click', handleClick);
         };
-    }, [captureDocumentSelection, captureSummarySelection, clearActiveHighlight, documents.documentRef, documents.selectedDocument, persistentSuggestionPopup, resetSelectionState, summary.summaryRef]);
+    }, [captureDocumentSelection, captureSummarySelection, clearActiveHighlight, documents.documentRef, documents.selectedDocument, interactionMode, persistentSuggestionPopup, resetSelectionState, summary.summaryRef]);
 
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -347,9 +347,12 @@ const useHighlightStore = ({ summary, documents }) => {
                                 <span
                                     key={`suggestion-${suggestion.id}-${index}-${segmentIndex}`}
                                     data-suggestion-id={suggestion.id}
-                                    className={`border-b-2 border-yellow-400 cursor-pointer hover:bg-yellow-200 highlighted-suggestion ${
-                                        isHighlighted ? 'bg-yellow-300' : 'bg-yellow-100'
+                                    className={`border-b-2 cursor-pointer highlighted-suggestion transition-colors hover:bg-[var(--color-highlight-strong)] ${
+                                        isHighlighted
+                                            ? 'bg-[var(--color-highlight-strong)]'
+                                            : 'bg-[var(--color-highlight-soft)]'
                                     }`}
+                                    style={{ borderColor: 'var(--color-highlight-border)' }}
                                     onMouseEnter={(event) => {
                                         if (!persistentSuggestionPopup) {
                                             handleSuggestionHover(event, suggestion);
