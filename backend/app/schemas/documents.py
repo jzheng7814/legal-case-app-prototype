@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
-from .checklists import ChecklistCollection
+from .checklists import ChecklistBinCollection
 
 
 class DocumentMetadata(BaseModel):
@@ -24,7 +24,7 @@ class Document(DocumentMetadata):
 class DocumentListResponse(BaseModel):
     case_id: str
     documents: List[Document]
-    document_checklists: Optional[ChecklistCollection] = Field(
+    document_checklists: Optional[ChecklistBinCollection] = Field(
         default=None,
         serialization_alias="documentChecklists",
         validation_alias=AliasChoices("documentChecklists", "document_checklists"),

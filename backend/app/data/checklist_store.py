@@ -9,11 +9,13 @@ from typing import Any, Dict, Optional, Protocol
 
 from pydantic import ValidationError
 
-from app.schemas.checklists import ChecklistCollection
+from app.schemas.checklists import ChecklistBinCollection
 
 logger = logging.getLogger(__name__)
 
-DocumentChecklistPayload = ChecklistCollection
+DocumentChecklistPayload = ChecklistBinCollection
+
+_CHECKLIST_STORE_VERSION = "sentence-bins-v1"
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ class StoredDocumentChecklist:
     signature: str
     items: DocumentChecklistPayload
     user_items: list[StoredUserChecklistItem]
+    version: str = _CHECKLIST_STORE_VERSION
 
 
 class DocumentChecklistStore(Protocol):
@@ -73,10 +76,19 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
             if not isinstance(raw_entry, dict):
                 return None
             stored_signature = raw_entry.get("signature")
+            version = raw_entry.get("version")
             items = raw_entry.get("items")
             user_items = raw_entry.get("userItems") or raw_entry.get("user_items") or []
         if not isinstance(stored_signature, str) or items is None:
             logger.debug("Checklist store entry for case %s missing expected structure.", key)
+            return None
+        if version and version != _CHECKLIST_STORE_VERSION:
+            logger.debug(
+                "Checklist store entry for case %s has mismatched version (found=%s, expected=%s).",
+                key,
+                version,
+                _CHECKLIST_STORE_VERSION,
+            )
             return None
         collection = _coerce_to_collection(items)
         if collection is None:
@@ -86,6 +98,7 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
             signature=stored_signature,
             items=collection,
             user_items=_coerce_user_items(user_items),
+            version=version or _CHECKLIST_STORE_VERSION,
         )
         if signature and record.signature != signature:
             logger.debug(
@@ -109,6 +122,7 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
         record = {
             "signature": signature,
             "items": items.model_dump(by_alias=True),
+            "version": _CHECKLIST_STORE_VERSION,
             "userItems": [
                 {
                     "id": entry.id,
@@ -162,28 +176,28 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
                     logger.warning("Unable to clean up temporary checklist store file %s.", tmp_path)
 
 
-def _coerce_to_collection(raw_items: Any) -> Optional[ChecklistCollection]:
-    if isinstance(raw_items, ChecklistCollection):
+def _coerce_to_collection(raw_items: Any) -> Optional[ChecklistBinCollection]:
+    if isinstance(raw_items, ChecklistBinCollection):
         return raw_items
 
     payload: Dict[str, Any]
     if isinstance(raw_items, dict):
-        if "items" in raw_items:
+        if "bins" in raw_items or "items" in raw_items:
             payload = raw_items
         else:
             entries = []
             for name, value in raw_items.items():
                 if not isinstance(name, str) or not isinstance(value, dict):
                     return None
-                entries.append({"itemName": name, "extraction": value})
-            payload = {"items": entries}
+                entries.append({"binId": name, "extraction": value})
+            payload = {"bins": entries}
     elif isinstance(raw_items, list):
-        payload = {"items": raw_items}
+        payload = {"bins": raw_items}
     else:
         return None
 
     try:
-        return ChecklistCollection.model_validate(payload)
+        return ChecklistBinCollection.model_validate(payload)
     except ValidationError:
         logger.debug("Checklist collection payload failed validation.")
         return None

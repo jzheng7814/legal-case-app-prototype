@@ -8,7 +8,7 @@ SUMMARY_DOCUMENT_ID = -1
 
 
 class ChecklistEvidence(BaseModel):
-    text: str
+    text: Optional[str] = None
     document_id: int = Field(
         ...,
         serialization_alias="documentId",
@@ -19,6 +19,17 @@ class ChecklistEvidence(BaseModel):
         ge=0,
         serialization_alias="startOffset",
         validation_alias=AliasChoices("start_offset", "startOffset"),
+    )
+    end_offset: int | None = Field(
+        None,
+        ge=0,
+        serialization_alias="endOffset",
+        validation_alias=AliasChoices("end_offset", "endOffset"),
+    )
+    sentence_ids: Optional[List[int]] = Field(
+        default=None,
+        serialization_alias="sentenceIds",
+        validation_alias=AliasChoices("sentenceIds", "sentence_ids"),
     )
     verified: bool = Field(
         True,
@@ -32,6 +43,20 @@ class ChecklistEvidence(BaseModel):
         if isinstance(value, int):
             return value
         raise TypeError("document_id must be provided as an integer")
+
+    @field_validator("sentence_ids", mode="before")
+    @classmethod
+    def _coerce_sentence_ids(cls, value: object) -> Optional[List[int]]:
+        if value is None:
+            return None
+        if isinstance(value, (list, tuple)):
+            result: List[int] = []
+            for entry in value:
+                if not isinstance(entry, int):
+                    raise TypeError("sentence_ids must be a list of integers")
+                result.append(entry)
+            return result
+        raise TypeError("sentence_ids must be provided as a list of integers")
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -77,6 +102,73 @@ class ChecklistCollection(BaseModel):
 
 class SummaryChecklistExtractionPayload(ChecklistCollection):
     """Structured output for summary-driven checklist extraction."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ChecklistSentenceEvidence(BaseModel):
+    document_id: int = Field(
+        ...,
+        serialization_alias="documentId",
+        validation_alias=AliasChoices("documentId", "document_id"),
+    )
+    sentence_ids: List[int] = Field(
+        ...,
+        serialization_alias="sentenceIds",
+        validation_alias=AliasChoices("sentenceIds", "sentence_ids"),
+        min_length=1,
+    )
+
+    @field_validator("sentence_ids", mode="before")
+    @classmethod
+    def _coerce_sentence_ids(cls, value: object) -> List[int]:
+        if isinstance(value, (list, tuple)):
+            result: List[int] = []
+            for entry in value:
+                if not isinstance(entry, int):
+                    raise TypeError("sentence_ids must be a list of integers")
+                result.append(entry)
+            return result
+        raise TypeError("sentence_ids must be a list of integers")
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ChecklistBinValue(BaseModel):
+    value: str
+    evidence: List[ChecklistEvidence]
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ChecklistBinExtractionPayload(BaseModel):
+    reasoning: str
+    extracted: List[ChecklistBinValue]
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ChecklistBinResult(BaseModel):
+    bin_id: str = Field(
+        ...,
+        serialization_alias="binId",
+        validation_alias=AliasChoices("bin_id", "binId", "id"),
+    )
+    extraction: ChecklistBinExtractionPayload = Field(
+        ...,
+        serialization_alias="extraction",
+        validation_alias=AliasChoices("extraction", "result", "payload"),
+    )
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ChecklistBinCollection(BaseModel):
+    bins: List[ChecklistBinResult] = Field(
+        ...,
+        serialization_alias="bins",
+        validation_alias=AliasChoices("bins", "items", "entries"),
+    )
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 

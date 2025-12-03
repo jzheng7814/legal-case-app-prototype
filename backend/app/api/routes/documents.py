@@ -5,7 +5,7 @@ from typing import Dict, Optional
 from fastapi import APIRouter
 
 from app.schemas.documents import DocumentListResponse, DocumentReference
-from app.schemas.checklists import ChecklistCollection
+from app.schemas.checklists import ChecklistBinCollection
 from app.services.checklists import extract_document_checklists, get_document_checklists_if_cached
 from app.services.documents import list_documents
 
@@ -29,7 +29,7 @@ async def get_case_documents(case_id: str) -> DocumentListResponse:
         for doc in documents
     ]
 
-    document_checklists: Optional[ChecklistCollection] = None
+    document_checklists: Optional[ChecklistBinCollection] = None
     checklist_status = "empty" if not document_refs else "pending"
 
     if document_refs:

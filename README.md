@@ -24,7 +24,7 @@ Full-stack prototype for an attorney-facing case summary editor. The React/Vite 
 
 ### Checklist-aware suggestion engine
 - Each suggestion request runs two checklist extractors (`app/services/checklists.py`): one over the authoritative documents, one over the current summary. The prompt template plus item metadata lives under `app/resources/checklists/`.
-- Checklist extraction is cached per case (hashed signature + payload persisted in `backend/app/data/flat_db/document_checklist_items.json`) and re-used whenever the source documents haven’t changed.
+- Checklist extraction is cached per case (hashed signature + payload persisted in `backend/app/data/flat_db/document_checklist_items_v2.json`) and re-used whenever the source documents haven’t changed.
 - `app/services/suggestions.py` compares document-vs-summary results, asks the LLM for structured suggestions validated against `SuggestionGenerationPayload`, and prunes overlapping spans via `rapidfuzz`/`SequenceMatcher` heuristics.
 - Responses include both checklist collections so the UI can show what’s missing and let users push checklist gaps into chat context.
 
@@ -110,7 +110,7 @@ npm run dev                      # launches on http://localhost:5173
 
 ### Data, assets, and logs
 - Demo documents: `backend/app/data/documents/*.txt` + `catalog.json`.
-- API caches: `backend/app/data/flat_db/case_documents.json` and `document_checklist_items.json`.
+- API caches: `backend/app/data/flat_db/case_documents.json` and `document_checklist_items_v2.json`.
 - Frontend fallback docs: `frontend/public/documents/`.
 - LLM/file logs: `backend/logs/llm-*.log`, `backend/logs/clearinghouse-*.log`, etc.
 

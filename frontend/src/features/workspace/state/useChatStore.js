@@ -138,7 +138,6 @@ const useChatStore = ({ summary, documents, highlight }) => {
 
         const label = (itemName || 'Checklist Item').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
         const evidenceLines = (evidence || [])
-            .filter((entry) => entry?.text)
             .map((entry) => {
                 const targetId = toDocumentId(entry.documentId ?? entry.document_id);
                 const baseLabel = targetId === SUMMARY_DOCUMENT_ID
@@ -146,7 +145,7 @@ const useChatStore = ({ summary, documents, highlight }) => {
                     : documentLabels[targetId] || (targetId != null ? `Document ${targetId}` : 'Document');
                 const docIdLabel = targetId != null && targetId !== SUMMARY_DOCUMENT_ID ? ` (ID ${targetId})` : '';
                 const rawStart = entry.startOffset ?? entry.start_offset ?? null;
-                const textLength = typeof entry.text === 'string' ? entry.text.length : null;
+                const rawEnd = entry.endOffset ?? entry.end_offset ?? null;
                 const startOffset =
                     typeof rawStart === 'number'
                         ? rawStart
@@ -154,14 +153,29 @@ const useChatStore = ({ summary, documents, highlight }) => {
                             ? Number.parseInt(rawStart, 10)
                             : null;
                 const endOffset =
-                    startOffset != null && Number.isFinite(textLength)
-                        ? startOffset + textLength
-                        : null;
+                    typeof rawEnd === 'number'
+                        ? rawEnd
+                        : rawEnd != null
+                            ? Number.parseInt(rawEnd, 10)
+                            : null;
+                const sentenceIds = Array.isArray(entry.sentenceIds ?? entry.sentence_ids)
+                    ? (entry.sentenceIds ?? entry.sentence_ids)
+                    : [];
                 const offsetsProvided =
                     startOffset != null && endOffset != null && endOffset > startOffset;
-                const offsetLabel = offsetsProvided ? ` [${startOffset}-${endOffset}]` : '';
-                return `${baseLabel}${docIdLabel}${offsetLabel}: ${entry.text}`;
-            });
+                const offsetLabel = offsetsProvided
+                    ? ` [${startOffset}-${endOffset}]`
+                    : sentenceIds.length
+                        ? ` [sentences ${sentenceIds.join(', ')}]`
+                        : '';
+                const snippet = typeof entry.text === 'string' && entry.text.trim().length
+                    ? entry.text.trim()
+                    : sentenceIds.length
+                        ? `Sentences ${sentenceIds.join(', ')}`
+                        : 'Evidence span';
+                return `${baseLabel}${docIdLabel}${offsetLabel}: ${snippet}`;
+            })
+            .filter(Boolean);
 
         const payloadLines = [`${label}: ${trimmedValue}`];
         if (evidenceLines.length) {

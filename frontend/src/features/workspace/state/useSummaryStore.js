@@ -33,33 +33,28 @@ const normaliseChecklistCollection = (collection) => {
         return [];
     }
 
+    const coerceEntry = (entry) => ({
+        itemName: entry?.itemName ?? entry?.item_name ?? entry?.name ?? entry?.binId ?? entry?.bin_id ?? entry?.id ?? '',
+        extraction: {
+            reasoning: entry?.extraction?.reasoning ?? entry?.result?.reasoning ?? '',
+            extracted: Array.isArray(entry?.extraction?.extracted ?? entry?.result?.extracted)
+                ? entry.extraction?.extracted ?? entry.result?.extracted
+                : []
+        }
+    });
+
     if (Array.isArray(collection)) {
-        return collection
-            .map((entry) => ({
-                itemName: entry?.itemName ?? entry?.item_name ?? entry?.name ?? '',
-                extraction: {
-                    reasoning: entry?.extraction?.reasoning ?? entry?.result?.reasoning ?? '',
-                    extracted: Array.isArray(entry?.extraction?.extracted ?? entry?.result?.extracted)
-                        ? entry.extraction?.extracted ?? entry.result?.extracted
-                        : []
-                }
-            }))
-            .filter((entry) => entry.itemName);
+        return collection.map(coerceEntry).filter((entry) => entry.itemName);
+    }
+
+    const bins = collection.bins ?? collection.Bins;
+    if (Array.isArray(bins)) {
+        return bins.map(coerceEntry).filter((entry) => entry.itemName);
     }
 
     const items = collection.items ?? collection.Items;
     if (Array.isArray(items)) {
-        return items
-            .map((entry) => ({
-                itemName: entry?.itemName ?? entry?.item_name ?? entry?.name ?? '',
-                extraction: {
-                    reasoning: entry?.extraction?.reasoning ?? entry?.result?.reasoning ?? '',
-                    extracted: Array.isArray(entry?.extraction?.extracted ?? entry?.result?.extracted)
-                        ? entry.extraction?.extracted ?? entry.result?.extracted
-                        : []
-                }
-            }))
-            .filter((entry) => entry.itemName);
+        return items.map(coerceEntry).filter((entry) => entry.itemName);
     }
 
     if (typeof collection === 'object') {

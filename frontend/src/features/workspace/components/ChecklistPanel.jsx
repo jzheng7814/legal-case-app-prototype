@@ -2,8 +2,64 @@ import React, { useMemo } from 'react';
 import { ClipboardList } from 'lucide-react';
 import { SUMMARY_DOCUMENT_ID } from '../constants';
 
+const BIN_LABELS = {
+    basic_info: 'Basic Case Information',
+    legal_foundation: 'Legal Foundation',
+    judge: 'Judge Information',
+    related_cases: 'Related Cases',
+    filings_proceedings: 'Filings and Proceedings',
+    decrees: 'Decrees',
+    settlements: 'Settlements',
+    monitoring: 'Monitoring',
+    context: 'Context'
+};
+
 const formatLabel = (label = '') =>
     label.replace(/_/g, ' ').replace(/\s+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()).trim();
+
+const normaliseChecklistEntries = (payload) => {
+    if (!payload) {
+        return [];
+    }
+
+    const coerceExtraction = (entry = {}) => ({
+        reasoning: entry?.extraction?.reasoning ?? entry?.result?.reasoning ?? '',
+        extracted: Array.isArray(entry?.extraction?.extracted ?? entry?.result?.extracted)
+            ? entry.extraction?.extracted ?? entry.result?.extracted
+            : []
+    });
+
+    const mapEntry = (entry = {}) => {
+        const binId = entry?.binId ?? entry?.bin_id ?? entry?.id ?? entry?.itemName ?? entry?.item_name ?? entry?.name;
+        const extraction = coerceExtraction(entry);
+        if (!binId) {
+            return null;
+        }
+        return {
+            itemName: binId,
+            label: BIN_LABELS[binId] ?? formatLabel(binId),
+            extraction
+        };
+    };
+
+    if (Array.isArray(payload)) {
+        const hasBins = payload.some((entry) => entry && (entry.binId || entry.bin_id || entry.id));
+        const hasItems = payload.some((entry) => entry && (entry.itemName || entry.item_name || entry.name));
+        if (hasBins || hasItems) {
+            return payload.map(mapEntry).filter(Boolean);
+        }
+    }
+
+    if (Array.isArray(payload?.bins)) {
+        return payload.bins.map(mapEntry).filter(Boolean);
+    }
+
+    if (Array.isArray(payload?.items)) {
+        return payload.items.map(mapEntry).filter(Boolean);
+    }
+
+    return [];
+};
 
 const resolveEvidenceMeta = (evidenceItem = {}) => {
     let documentId = evidenceItem.documentId ?? evidenceItem.document_id ?? null;
@@ -23,14 +79,17 @@ const resolveEvidenceMeta = (evidenceItem = {}) => {
         documentId = null;
     }
     const rawStart = evidenceItem.startOffset ?? evidenceItem.start_offset ?? null;
-    const textLength = typeof evidenceItem.text === 'string' ? evidenceItem.text.length : null;
+    const rawEnd = evidenceItem.endOffset ?? evidenceItem.end_offset ?? null;
     const parsedStart =
         typeof rawStart === 'number' ? rawStart : rawStart != null ? Number.parseInt(rawStart, 10) : null;
+    const parsedEnd = typeof rawEnd === 'number' ? rawEnd : rawEnd != null ? Number.parseInt(rawEnd, 10) : null;
     const startOffset = Number.isFinite(parsedStart) ? parsedStart : null;
-    const endOffset =
-        startOffset != null && Number.isFinite(textLength) ? startOffset + textLength : null;
+    const endOffset = Number.isFinite(parsedEnd) ? parsedEnd : null;
     const isVerified = evidenceItem.verified !== false;
-    return { documentId, startOffset, endOffset, isVerified };
+    const sentenceIds = Array.isArray(evidenceItem.sentenceIds ?? evidenceItem.sentence_ids)
+        ? (evidenceItem.sentenceIds ?? evidenceItem.sentence_ids)
+        : [];
+    return { documentId, startOffset, endOffset, isVerified, sentenceIds };
 };
 
 const ChecklistColumn = ({
@@ -41,18 +100,7 @@ const ChecklistColumn = ({
     onEvidenceNavigate,
     resolveDocumentTitle = () => null
 }) => {
-    const entries = useMemo(() => {
-        if (!Array.isArray(items)) {
-            return [];
-        }
-        return items.map((entry) => ({
-            itemName: entry?.itemName ?? entry?.item_name ?? entry?.name ?? 'Checklist Item',
-            extraction: entry?.extraction ?? entry?.result ?? {
-                reasoning: '',
-                extracted: []
-            }
-        }));
-    }, [items]);
+    const entries = useMemo(() => normaliseChecklistEntries(items), [items]);
 
     return (
         <div className="flex flex-col min-h-0 bg-[var(--color-surface-panel)] border border-[var(--color-border)] rounded-lg shadow-sm">
@@ -64,13 +112,13 @@ const ChecklistColumn = ({
                 {entries.length === 0 && (
                     <p className="text-xs text-[var(--color-text-muted)]">No checklist items available yet.</p>
                 )}
-                {entries.map(({ itemName, extraction }) => {
+                {entries.map(({ itemName, label, extraction }) => {
                     const extracted = Array.isArray(extraction?.extracted) ? extraction.extracted : [];
                     return (
                         <div key={itemName} className="rounded border border-[var(--color-border)] bg-[var(--color-surface-panel-alt)] px-3 py-2">
                             <div className="flex items-start justify-between gap-2">
                                 <div>
-                                    <p className="text-sm font-semibold text-[var(--color-text-primary)]">{formatLabel(itemName)}</p>
+                                    <p className="text-sm font-semibold text-[var(--color-text-primary)]">{label ?? formatLabel(itemName)}</p>
                                 </div>
                             </div>
                             {extracted.length === 0 ? (
@@ -98,7 +146,7 @@ const ChecklistColumn = ({
                                             {Array.isArray(entry.evidence) && entry.evidence.length > 0 && (
                                                 <ul className="mt-2 space-y-1">
                                                     {entry.evidence.map((evidenceItem, evidenceIndex) => {
-                                                        const { documentId, startOffset, endOffset, isVerified } = resolveEvidenceMeta(evidenceItem);
+                                                        const { documentId, startOffset, endOffset, isVerified, sentenceIds } = resolveEvidenceMeta(evidenceItem);
                                                         const hasExactRange =
                                                             isVerified &&
                                                             startOffset != null &&
@@ -111,9 +159,10 @@ const ChecklistColumn = ({
                                                             documentId === SUMMARY_DOCUMENT_ID
                                                                 ? 'Summary'
                                                                 : resolveDocumentTitle(documentId);
-                                                        const offsetLabel =
-                                                            hasExactRange
-                                                                ? ` · chars ${startOffset}-${endOffset}`
+                                                        const offsetLabel = hasExactRange
+                                                            ? ` · chars ${startOffset}-${endOffset}`
+                                                            : sentenceIds.length
+                                                                ? ` · sentences ${sentenceIds.join(', ')}`
                                                                 : '';
                                                         const resolvedLabel = docTitle
                                                             ? `${docTitle}${documentId != null && documentId !== SUMMARY_DOCUMENT_ID ? ` (ID ${documentId})` : ''}`
@@ -144,7 +193,11 @@ const ChecklistColumn = ({
                                                                     }`}
                                                                 >
                                                                     <span className="block italic text-[var(--color-text-secondary)]">
-                                                                        “{evidenceItem?.text || 'N/A'}”
+                                                                        {evidenceItem?.text
+                                                                            ? `“${evidenceItem.text}”`
+                                                                            : sentenceIds.length
+                                                                                ? `Sentences ${sentenceIds.join(', ')}`
+                                                                                : 'Evidence span'}
                                                                     </span>
                                                                     <span className="block text-[11px] text-[var(--color-text-muted)]">
                                                                         {resolvedLabel}

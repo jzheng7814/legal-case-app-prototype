@@ -58,13 +58,13 @@ const DocumentsPanel = () => {
     }, [activeChecklistHighlights, documentRef, currentDocumentText]);
 
     return (
-        <div className="flex-1 bg-[var(--color-surface-panel)] flex flex-col border-l border-[var(--color-border)]">
+        <div className="flex-1 bg-[var(--color-surface-panel)] flex flex-col border-l border-[var(--color-border)] min-h-0">
             <div className="border-b border-[var(--color-border)] px-4 py-3">
                 <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Document Viewer</h2>
                 <p className="text-xs text-[var(--color-text-muted)]">Select spans to add checklist entries. Highlights show captured facts.</p>
             </div>
 
-            <div className="flex-1 p-4 flex flex-col space-y-4 min-h-0">
+            <div className="flex-1 p-4 flex flex-col space-y-4 min-h-0 overflow-hidden">
                 {documents.length > 0 ? (
                     <select
                         value={selectedDocument != null ? String(selectedDocument) : ''}
@@ -89,12 +89,12 @@ const DocumentsPanel = () => {
                     </div>
                 )}
 
-                <div className="relative flex-1 min-h-0">
+                <div className="relative flex-1 min-h-0 overflow-hidden">
                     <div
                         ref={documentRef}
-                        className="relative h-full w-full bg-[var(--color-surface-panel-alt)] border border-[var(--color-border)] rounded-md p-4 overflow-y-auto cursor-text"
+                        className="relative h-full w-full bg-[var(--color-surface-panel-alt)] border border-[var(--color-border)] rounded-md p-4 overflow-y-auto overscroll-contain cursor-text"
                     >
-                        <pre className="text-xs leading-relaxed font-mono whitespace-pre-wrap text-[var(--color-text-primary)]">
+                        <pre className="text-xs leading-relaxed font-mono whitespace-pre-wrap text-[var(--color-text-primary)] min-h-full w-full">
                             {currentDocumentText}
                         </pre>
                         {categoryHighlights.map((entry) =>

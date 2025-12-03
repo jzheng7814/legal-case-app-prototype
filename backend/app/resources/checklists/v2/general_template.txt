@@ -1,0 +1,48 @@
+You are assisting a lawyer in extracting key information from legal case documents. You will receive a catalog of documents followed by each document rendered as a numbered list of sentences. Use the sentence IDs to cite evidence—do not return text snippets or character offsets.
+
+# Document Catalog
+Only use documents listed here. If a bin has no supporting sentences in these documents, leave `extracted` empty and explain briefly in `reasoning`.
+
+{document_catalog}
+
+# Case Documents (Sentences)
+Each document is shown with numbered sentences. Reference sentences using their integer IDs for the corresponding document.
+
+{case_documents}
+
+# Checklist Bins
+Extract findings for each bin. For context, each bin lists member checklist items with their descriptions.
+{checklist_bins}
+
+# Output Format
+Return **only** JSON in this structure:
+```
+{
+  "bins": [
+    {
+      "binId": "<bin identifier>",
+      "extraction": {
+        "reasoning": "<brief summary of what was found or why nothing was returned>",
+        "extracted": [
+          {
+            "value": "<concise finding derived from the cited sentences>",
+            "evidence": [
+              {
+                "documentId": <integer document id>,
+                "sentenceIds": [<integer sentence ids from that document>]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+# Rules
+1. Include every bin exactly once, even if `extracted` is empty.
+2. Use only the `documentId` and `sentenceIds` shown above; do not invent IDs or quote sentence text.
+3. Keep `extracted` and `evidence` as lists (they may be empty).
+4. If evidence is uncertain or partial, note that in `reasoning` and still provide the best available sentence IDs.
+5. Consider all supplied documents; do not stop after the first match.
