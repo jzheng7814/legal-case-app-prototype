@@ -183,6 +183,11 @@ def _resolve_document_payloads(case_id: str, documents: List[DocumentReference])
     return payloads
 
 
+def _build_text_lookup_from_references(case_id: str, documents: List[DocumentReference]) -> Dict[int, str]:
+    payloads = _resolve_document_payloads(case_id, documents)
+    return {int(payload["id"]): payload.get("text", "") for payload in payloads}
+
+
 def _tokenize_document(payload: Dict[str, str]) -> TokenizedDocument:
     truncated_text, truncated = _truncate_for_prompt(payload["text"], _MAX_DOCUMENT_CHARS)
     sentences: List[TokenizedSentence] = []
@@ -278,6 +283,7 @@ async def _resolve_cached_collection(
     payloads = _resolve_document_payloads(case_id, documents)
     tokenized = [_tokenize_document(payload) for payload in payloads]
     signature = _compute_documents_signature(case_id, tokenized)
+    text_lookup = {doc.document_id: doc.text for doc in tokenized}
 
     async with _DOCUMENT_CACHE_LOCK:
         cached = _DOCUMENT_CACHE.get(signature)
@@ -286,7 +292,15 @@ async def _resolve_cached_collection(
 
     stored = _DOCUMENT_CHECKLIST_STORE.get(case_id, signature=signature)
     if stored is not None:
-        cached_copy = _copy_bin_collection(stored.items)
+        sanitized = _strip_sentence_ids_from_collection(stored.items, text_lookup)
+        if sanitized != stored.items:
+            _DOCUMENT_CHECKLIST_STORE.set(
+                case_id,
+                signature=stored.signature,
+                items=sanitized,
+                user_items=stored.user_items,
+            )
+        cached_copy = _copy_bin_collection(sanitized)
         async with _DOCUMENT_CACHE_LOCK:
             _DOCUMENT_CACHE[signature] = cached_copy
         return _copy_bin_collection(cached_copy), tokenized, signature
@@ -297,17 +311,35 @@ async def _resolve_cached_collection(
 async def get_document_checklists_if_cached(
     case_id: str, documents: List[DocumentReference]
 ) -> ChecklistBinCollection | None:
-    cached, _, _ = await _resolve_cached_collection(case_id, documents)
-    return cached
+    cached, tokenized, _ = await _resolve_cached_collection(case_id, documents)
+    if cached is None:
+        return None
+    text_lookup = {doc.document_id: doc.text for doc in tokenized}
+    sanitized = _strip_sentence_ids_from_collection(cached, text_lookup)
+    return sanitized
 
 
 async def ensure_document_checklist_record(
     case_id: str, documents: List[DocumentReference]
 ) -> StoredDocumentChecklist:
     """Ensure checklist extraction results exist for a case and return the stored payload."""
+    text_lookup = _build_text_lookup_from_references(case_id, documents)
     stored = _DOCUMENT_CHECKLIST_STORE.get(case_id)
     if stored is not None:
-        return stored
+        sanitized_items = _strip_sentence_ids_from_collection(stored.items, text_lookup)
+        if sanitized_items != stored.items:
+            _DOCUMENT_CHECKLIST_STORE.set(
+                case_id,
+                signature=stored.signature,
+                items=sanitized_items,
+                user_items=stored.user_items,
+            )
+        return StoredDocumentChecklist(
+            signature=stored.signature,
+            items=sanitized_items,
+            user_items=stored.user_items,
+            version=stored.version,
+        )
 
     await extract_document_checklists(case_id, documents)
     stored = _DOCUMENT_CHECKLIST_STORE.get(case_id)
@@ -345,6 +377,7 @@ def _build_sentence_index(documents: List[TokenizedDocument]) -> Dict[int, Dict[
 def _resolve_sentence_evidence(
     evidence: ChecklistEvidence,
     sentence_index: Dict[int, Dict[int, TokenizedSentence]],
+    text_lookup: Optional[Dict[int, str]] = None,
 ) -> ChecklistEvidence:
     sentence_ids = evidence.sentence_ids or []
     sentence_ids = list(dict.fromkeys(sentence_ids))  # de-duplicate while preserving order
@@ -365,13 +398,17 @@ def _resolve_sentence_evidence(
 
     start = min(sentence.start for sentence in matched)
     end = max(sentence.end for sentence in matched)
+    doc_text = (text_lookup or {}).get(evidence.document_id)
+    span_text = None
+    if doc_text is not None and 0 <= start < end <= len(doc_text):
+        span_text = doc_text[start:end]
 
     return ChecklistEvidence(
         document_id=evidence.document_id,
-        sentence_ids=sentence_ids or None,
         start_offset=start,
         end_offset=end,
-        text=None,
+        text=span_text,
+        sentence_ids=sentence_ids or None,
         verified=True,
     )
 
@@ -396,13 +433,14 @@ def _normalize_bins(collection: ChecklistBinCollection) -> ChecklistBinCollectio
 def _resolve_bin_collection(
     collection: ChecklistBinCollection,
     sentence_index: Dict[int, Dict[int, TokenizedSentence]],
+    text_lookup: Optional[Dict[int, str]] = None,
 ) -> ChecklistBinCollection:
     resolved_bins: List[ChecklistBinResult] = []
     for bin_entry in collection.bins:
         resolved_values: List[ChecklistBinValue] = []
         for value in bin_entry.extraction.extracted or []:
             resolved_evidence = [
-                _resolve_sentence_evidence(evidence, sentence_index) for evidence in value.evidence
+                _resolve_sentence_evidence(evidence, sentence_index, text_lookup) for evidence in value.evidence
             ]
             resolved_values.append(
                 ChecklistBinValue(
@@ -422,8 +460,53 @@ def _resolve_bin_collection(
     return ChecklistBinCollection(bins=resolved_bins)
 
 
+def _strip_sentence_ids_from_collection(
+    collection: ChecklistBinCollection, text_lookup: Optional[Dict[int, str]] = None
+) -> ChecklistBinCollection:
+    """Return a copy with sentenceIds removed and evidence text populated when possible."""
+    cleaned_bins: List[ChecklistBinResult] = []
+    for bin_entry in collection.bins:
+        cleaned_values: List[ChecklistBinValue] = []
+        for value in bin_entry.extraction.extracted or []:
+            cleaned_evidence: List[ChecklistEvidence] = []
+            for evidence in value.evidence:
+                doc_text = (text_lookup or {}).get(evidence.document_id)
+                start = evidence.start_offset
+                end = evidence.end_offset
+                text = evidence.text
+                if doc_text is not None and start is not None and end is not None and 0 <= start < end <= len(doc_text):
+                    text = doc_text[start:end]
+                cleaned_evidence.append(
+                    ChecklistEvidence(
+                        document_id=evidence.document_id,
+                        start_offset=start,
+                        end_offset=end,
+                        text=text,
+                        verified=evidence.verified,
+                        sentence_ids=None,
+                    )
+                )
+            cleaned_values.append(
+                ChecklistBinValue(
+                    value=value.value,
+                    evidence=cleaned_evidence,
+                )
+            )
+        cleaned_bins.append(
+            ChecklistBinResult(
+                bin_id=bin_entry.bin_id,
+                extraction=ChecklistBinExtractionPayload(
+                    reasoning=bin_entry.extraction.reasoning,
+                    extracted=cleaned_values,
+                ),
+            )
+        )
+    return ChecklistBinCollection(bins=cleaned_bins)
+
+
 def build_category_collection(record: StoredDocumentChecklist) -> ChecklistCategoryCollection:
     """Map bin-level checklist values into UI categories."""
+    sanitized_items = _strip_sentence_ids_from_collection(record.items)
     categories: Dict[str, ChecklistCategory] = {
         meta_id: ChecklistCategory(
             id=meta_id,
@@ -434,7 +517,7 @@ def build_category_collection(record: StoredDocumentChecklist) -> ChecklistCateg
         for meta_id in _CATEGORY_ORDER
     }
 
-    for bin_entry in record.items.bins:
+    for bin_entry in sanitized_items.bins:
         category = categories.get(bin_entry.bin_id)
         if not category:
             continue
@@ -478,7 +561,13 @@ def build_category_collection(record: StoredDocumentChecklist) -> ChecklistCateg
         )
 
     ordered = [categories[category_id] for category_id in _CATEGORY_ORDER]
-    combined_signature = _build_combined_signature(record)
+    sanitized_record = StoredDocumentChecklist(
+        signature=record.signature,
+        items=sanitized_items,
+        user_items=record.user_items,
+        version=record.version,
+    )
+    combined_signature = _build_combined_signature(sanitized_record)
     return ChecklistCategoryCollection(signature=combined_signature, categories=ordered)
 
 
@@ -564,13 +653,14 @@ def append_user_checklist_value(
         end_offset=payload.end_offset,
     )
     next_entries = [*record.user_items, entry]
+    sanitized_items = _strip_sentence_ids_from_collection(record.items)
     _DOCUMENT_CHECKLIST_STORE.set(
         case_id,
         signature=record.signature,
-        items=record.items,
+        items=sanitized_items,
         user_items=next_entries,
     )
-    return StoredDocumentChecklist(signature=record.signature, items=record.items, user_items=next_entries)
+    return StoredDocumentChecklist(signature=record.signature, items=sanitized_items, user_items=next_entries)
 
 
 async def remove_checklist_value(case_id: str, value_id: str) -> StoredDocumentChecklist:
@@ -598,14 +688,15 @@ async def remove_checklist_value(case_id: str, value_id: str) -> StoredDocumentC
     updated_collection = _remove_ai_value_from_collection(record.items, bin_id, value_index)
     if updated_collection is None:
         raise HTTPException(status_code=404, detail="Checklist item not found.")
+    sanitized_items = _strip_sentence_ids_from_collection(updated_collection)
     _DOCUMENT_CHECKLIST_STORE.set(
         case_id,
         signature=record.signature,
-        items=updated_collection,
+        items=sanitized_items,
         user_items=record.user_items,
     )
-    await _refresh_cache(record.signature, updated_collection)
-    return StoredDocumentChecklist(signature=record.signature, items=updated_collection, user_items=record.user_items)
+    await _refresh_cache(record.signature, sanitized_items)
+    return StoredDocumentChecklist(signature=record.signature, items=sanitized_items, user_items=record.user_items)
 
 
 def _build_combined_signature(record: StoredDocumentChecklist) -> str:
@@ -970,17 +1061,21 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
 
     normalized = _normalize_bins(raw_response)
     sentence_index = _build_sentence_index(tokenized_docs)
-    resolved = _resolve_bin_collection(normalized, sentence_index)
+    text_lookup = {doc.document_id: doc.text for doc in tokenized_docs}
+    resolved = _resolve_bin_collection(normalized, sentence_index, text_lookup)
+    for bin_entry in resolved.bins:
+        _validate_evidence_offsets(bin_entry.bin_id, bin_entry.extraction, text_lookup)
+    sanitized = _strip_sentence_ids_from_collection(resolved, text_lookup)
 
     try:
-        _DOCUMENT_CHECKLIST_STORE.set(case_id, signature=signature, items=resolved)
+        _DOCUMENT_CHECKLIST_STORE.set(case_id, signature=signature, items=sanitized)
     except Exception:  # pylint: disable=broad-except
         logger.exception("Failed to persist checklist results for case %s", case_id)
 
     async with _DOCUMENT_CACHE_LOCK:
         cached_value = _DOCUMENT_CACHE.get(signature)
         if cached_value is None:
-            _DOCUMENT_CACHE[signature] = _copy_bin_collection(resolved)
+            _DOCUMENT_CACHE[signature] = _copy_bin_collection(sanitized)
             cached_value = _DOCUMENT_CACHE[signature]
 
     return _copy_bin_collection(cached_value)

@@ -76,6 +76,15 @@ def list_documents(case_id: str) -> List[Document]:
     return _clone_documents(documents)
 
 
+def list_cached_documents(case_id: str) -> List[Document]:
+    """Return cached/stored documents for a case without hitting external sources."""
+    normalized = _normalize_case_id(case_id)
+    cached = _get_cached_documents(normalized)
+    if cached is not None:
+        return cached
+    return []
+
+
 def get_document(case_id: str, document_id: str) -> Document:
     normalized = _normalize_case_id(case_id)
     documents = _get_cached_documents(normalized)

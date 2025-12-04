@@ -223,7 +223,7 @@ const ChecklistPage = ({ isActive }) => {
                     )}
                 </div>
             </div>
-            <div className="flex-1 relative">
+            <div className="flex flex-1 min-h-0 relative">
                 <DocumentsPanel />
                 {selectionAvailable && (
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[var(--color-overlay-scrim)] px-3 py-1 text-xs text-[var(--color-text-inverse)] shadow">

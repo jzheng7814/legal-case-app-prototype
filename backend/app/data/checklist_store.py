@@ -121,7 +121,7 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
         key = _normalize_case_id(case_id)
         record = {
             "signature": signature,
-            "items": items.model_dump(by_alias=True),
+            "items": items.model_dump(by_alias=True, exclude_none=True),
             "version": _CHECKLIST_STORE_VERSION,
             "userItems": [
                 {

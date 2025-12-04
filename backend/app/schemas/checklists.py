@@ -30,6 +30,7 @@ class ChecklistEvidence(BaseModel):
         default=None,
         serialization_alias="sentenceIds",
         validation_alias=AliasChoices("sentenceIds", "sentence_ids"),
+        exclude=True,
     )
     verified: bool = Field(
         True,
@@ -210,6 +211,21 @@ class ChecklistCategory(BaseModel):
 class ChecklistCategoryCollection(BaseModel):
     signature: str
     categories: List[ChecklistCategory]
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ChecklistStatusResponse(BaseModel):
+    checklist_status: str = Field(
+        ...,
+        serialization_alias="checklistStatus",
+        validation_alias=AliasChoices("checklistStatus", "checklist_status"),
+    )
+    document_checklists: Optional[ChecklistBinCollection] = Field(
+        default=None,
+        serialization_alias="documentChecklists",
+        validation_alias=AliasChoices("documentChecklists", "document_checklists"),
+    )
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
