@@ -6,8 +6,8 @@
       "max_output_tokens": 16384
     },
     "openai": {
-      "response_model": "gpt-5-nano",
-      "conversation_model": "gpt-5-nano",
+      "response_model": "gpt-5-mini",
+      "conversation_model": "gpt-5-mini",
       "reasoning_effort": "low"
     },
     "ollama": {

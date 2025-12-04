@@ -46,8 +46,9 @@ def list_documents(case_id: str) -> List[Document]:
 
     catalog_documents = _load_catalog_documents(normalized)
     if catalog_documents is not None:
-        _remember_documents(normalized, catalog_documents)
-        return _clone_documents(catalog_documents)
+        ordered = _sort_documents(catalog_documents)
+        _remember_documents(normalized, ordered)
+        return _clone_documents(ordered)
 
     try:
         documents = _fetch_remote_documents(normalized)
@@ -73,7 +74,8 @@ def list_documents(case_id: str) -> List[Document]:
             status_code=502, detail="Failed to retrieve documents from Clearinghouse. Please try again later."
         ) from exc
 
-    return _clone_documents(documents)
+    ordered = _sort_documents(documents)
+    return _clone_documents(ordered)
 
 
 def list_cached_documents(case_id: str) -> List[Document]:
@@ -81,7 +83,7 @@ def list_cached_documents(case_id: str) -> List[Document]:
     normalized = _normalize_case_id(case_id)
     cached = _get_cached_documents(normalized)
     if cached is not None:
-        return cached
+        return _sort_documents(cached)
     return []
 
 
@@ -195,8 +197,9 @@ def _get_cached_documents(case_id: str) -> Optional[List[Document]]:
                     continue
             item = working
         documents.append(Document.model_validate(item))
-    _remember_documents(case_id, documents)
-    return _clone_documents(documents)
+    ordered = _sort_documents(documents)
+    _remember_documents(case_id, ordered)
+    return _clone_documents(ordered)
 
 
 def _clone_documents(documents: Iterable[Document]) -> List[Document]:
@@ -208,3 +211,32 @@ def _normalize_case_id(case_id: str) -> str:
         return str(int(case_id))
     except (TypeError, ValueError):
         return str(case_id)
+
+
+def _parse_ecf_key(raw_value: Optional[str]) -> tuple[int, int, object]:
+    if raw_value is None:
+        return (1, 1, "")
+    text = str(raw_value).strip()
+    if not text:
+        return (1, 1, "")
+    try:
+        number = int(text)
+        return (0, 0, number)
+    except (TypeError, ValueError):
+        return (0, 1, text)
+
+
+def _document_sort_key(document: Document) -> tuple:
+    ecf_flags = _parse_ecf_key(document.ecf_number)
+    # Place docket first, then ECF-bearing documents, then remainder by id.
+    return (
+        0 if document.is_docket else 1,
+        ecf_flags[0],
+        ecf_flags[1],
+        ecf_flags[2],
+        document.id,
+    )
+
+
+def _sort_documents(documents: List[Document]) -> List[Document]:
+    return sorted(list(documents), key=_document_sort_key)

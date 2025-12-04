@@ -7,13 +7,10 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import HTTPException
-
-from rapidfuzz import fuzz, process
 
 from app.data.checklist_store import (
     DocumentChecklistStore,
@@ -22,17 +19,16 @@ from app.data.checklist_store import (
     StoredUserChecklistItem,
 )
 from app.schemas.checklists import (
-    ChecklistBinCollection,
-    ChecklistBinExtractionPayload,
-    ChecklistBinResult,
-    ChecklistBinValue,
-    ChecklistCategory,
-    ChecklistCategoryCollection,
-    ChecklistCategoryValue,
-    ChecklistEvidence,
-    ChecklistExtractionPayload,
+    EvidenceCategory,
+    EvidenceCategoryCollection,
+    EvidenceCategoryValue,
+    EvidenceCollection,
+    EvidenceItem,
+    EvidencePointer,
+    LlmEvidenceCollection,
+    LlmEvidencePointer,
     ChecklistItemCreateRequest,
-    SummaryChecklistExtractionPayload,
+    SUMMARY_DOCUMENT_ID,
 )
 from app.schemas.documents import DocumentReference
 from app.services.documents import get_document
@@ -45,7 +41,7 @@ _TEMPLATE_PATH = _ASSET_DIR / "v2" / "general_template.txt"
 _ITEM_DESCRIPTIONS_PATH = _ASSET_DIR / "item_specific_info_improved.json"
 _CATEGORY_METADATA_PATH = _ASSET_DIR / "v2" / "category_metadata.json"
 
-_CHECKLIST_VERSION = "sentence-bins-v1"
+_CHECKLIST_VERSION = "evidence-items-v1"
 
 if not _TEMPLATE_PATH.exists():
     raise RuntimeError(f"Checklist prompt template not found at {_TEMPLATE_PATH}")
@@ -81,8 +77,10 @@ for category in _CATEGORY_METADATA:
 
 _CATEGORY_ORDER = [category["id"] for category in _CATEGORY_METADATA if isinstance(category.get("id"), str)]
 
-_DOCUMENT_CACHE: Dict[str, ChecklistBinCollection] = {}
+_DOCUMENT_CACHE: Dict[str, EvidenceCollection] = {}
 _DOCUMENT_CACHE_LOCK = asyncio.Lock()
+_IN_FLIGHT_EXTRACTIONS: Dict[str, asyncio.Task[EvidenceCollection]] = {}
+_IN_FLIGHT_LOCK = asyncio.Lock()
 
 _CHECKLIST_DB_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "flat_db" / "document_checklist_items_v2.json"
@@ -91,7 +89,6 @@ _DOCUMENT_CHECKLIST_STORE: DocumentChecklistStore = JsonDocumentChecklistStore(_
 
 _MAX_DOCUMENT_CHARS = 12_000
 _MAX_SUMMARY_CHARS = 6_000
-SUMMARY_DOCUMENT_ID = -1
 
 
 def get_checklist_definitions() -> Dict[str, str]:
@@ -155,6 +152,30 @@ class TokenizedDocument:
 
 
 _SENTENCE_SPLIT_PATTERN = re.compile(r".+?(?:[.!?](?=\s|$)|\n{2,}|$)", flags=re.DOTALL)
+
+
+def _parse_ecf_key(raw_value: Optional[str]) -> tuple[int, int, object]:
+    if raw_value is None:
+        return (1, 1, "")
+    text = str(raw_value).strip()
+    if not text:
+        return (1, 1, "")
+    try:
+        number = int(text)
+        return (0, 0, number)
+    except (TypeError, ValueError):
+        return (0, 1, text)
+
+
+def _document_sort_key(doc_ref: DocumentReference) -> tuple:
+    ecf_flags = _parse_ecf_key(doc_ref.ecf_number)
+    return (
+        0 if doc_ref.is_docket else 1,
+        ecf_flags[0],
+        ecf_flags[1],
+        ecf_flags[2],
+        doc_ref.id,
+    )
 
 
 def _resolve_document_payloads(case_id: str, documents: List[DocumentReference]) -> List[Dict[str, str]]:
@@ -248,7 +269,7 @@ def _build_case_documents_block(documents: List[TokenizedDocument]) -> str:
 
 def _build_document_catalog(documents: List[TokenizedDocument]) -> str:
     lines: List[str] = []
-    for doc in sorted(documents, key=lambda item: item.document_id):
+    for doc in documents:
         descriptor_parts: List[str] = []
         if doc.title:
             descriptor_parts.append(doc.title)
@@ -265,7 +286,7 @@ def _compute_documents_signature(case_id: str, documents: List[TokenizedDocument
     digest = hashlib.sha256()
     digest.update(case_id.encode("utf-8"))
     digest.update(_CHECKLIST_VERSION.encode("utf-8"))
-    for doc in sorted(documents, key=lambda item: item.document_id):
+    for doc in documents:
         digest.update(str(doc.document_id).encode("utf-8"))
         digest.update(doc.title.encode("utf-8"))
         digest.update(doc.type.encode("utf-8"))
@@ -273,14 +294,15 @@ def _compute_documents_signature(case_id: str, documents: List[TokenizedDocument
     return digest.hexdigest()
 
 
-def _copy_bin_collection(collection: ChecklistBinCollection) -> ChecklistBinCollection:
+def _copy_collection(collection: EvidenceCollection) -> EvidenceCollection:
     return collection.model_copy(deep=True)
 
 
 async def _resolve_cached_collection(
     case_id: str, documents: List[DocumentReference]
-) -> tuple[ChecklistBinCollection | None, List[TokenizedDocument], str]:
-    payloads = _resolve_document_payloads(case_id, documents)
+) -> tuple[EvidenceCollection | None, List[TokenizedDocument], str]:
+    sorted_docs = sorted(documents, key=_document_sort_key)
+    payloads = _resolve_document_payloads(case_id, sorted_docs)
     tokenized = [_tokenize_document(payload) for payload in payloads]
     signature = _compute_documents_signature(case_id, tokenized)
     text_lookup = {doc.document_id: doc.text for doc in tokenized}
@@ -288,7 +310,7 @@ async def _resolve_cached_collection(
     async with _DOCUMENT_CACHE_LOCK:
         cached = _DOCUMENT_CACHE.get(signature)
     if cached is not None:
-        return _copy_bin_collection(cached), tokenized, signature
+        return _copy_collection(cached), tokenized, signature
 
     stored = _DOCUMENT_CHECKLIST_STORE.get(case_id, signature=signature)
     if stored is not None:
@@ -300,17 +322,17 @@ async def _resolve_cached_collection(
                 items=sanitized,
                 user_items=stored.user_items,
             )
-        cached_copy = _copy_bin_collection(sanitized)
+        cached_copy = _copy_collection(sanitized)
         async with _DOCUMENT_CACHE_LOCK:
             _DOCUMENT_CACHE[signature] = cached_copy
-        return _copy_bin_collection(cached_copy), tokenized, signature
+        return _copy_collection(cached_copy), tokenized, signature
 
     return None, tokenized, signature
 
 
 async def get_document_checklists_if_cached(
     case_id: str, documents: List[DocumentReference]
-) -> ChecklistBinCollection | None:
+) -> EvidenceCollection | None:
     cached, tokenized, _ = await _resolve_cached_collection(case_id, documents)
     if cached is None:
         return None
@@ -323,7 +345,8 @@ async def ensure_document_checklist_record(
     case_id: str, documents: List[DocumentReference]
 ) -> StoredDocumentChecklist:
     """Ensure checklist extraction results exist for a case and return the stored payload."""
-    text_lookup = _build_text_lookup_from_references(case_id, documents)
+    sorted_docs = sorted(documents, key=_document_sort_key)
+    text_lookup = _build_text_lookup_from_references(case_id, sorted_docs)
     stored = _DOCUMENT_CHECKLIST_STORE.get(case_id)
     if stored is not None:
         sanitized_items = _strip_sentence_ids_from_collection(stored.items, text_lookup)
@@ -341,7 +364,7 @@ async def ensure_document_checklist_record(
             version=stored.version,
         )
 
-    await extract_document_checklists(case_id, documents)
+    await extract_document_checklists(case_id, sorted_docs)
     stored = _DOCUMENT_CHECKLIST_STORE.get(case_id)
     if stored is None:
         raise RuntimeError(f"Checklist extraction for case {case_id} failed to persist.")
@@ -353,7 +376,7 @@ def _build_checklist_bins_block() -> str:
     for category_id in _CATEGORY_ORDER:
         meta = _CATEGORY_LOOKUP[category_id]
         label = meta["label"]
-        lines.append(f"- Bin {category_id} — {label}")
+        lines.append(f"- Evidence bin {category_id} — {label}")
         members = meta.get("members") or []
         if members:
             lines.append("  Guidance:")
@@ -375,10 +398,10 @@ def _build_sentence_index(documents: List[TokenizedDocument]) -> Dict[int, Dict[
 
 
 def _resolve_sentence_evidence(
-    evidence: ChecklistEvidence,
+    evidence: LlmEvidencePointer,
     sentence_index: Dict[int, Dict[int, TokenizedSentence]],
     text_lookup: Optional[Dict[int, str]] = None,
-) -> ChecklistEvidence:
+) -> EvidencePointer:
     sentence_ids = evidence.sentence_ids or []
     sentence_ids = list(dict.fromkeys(sentence_ids))  # de-duplicate while preserving order
     sentences_for_doc = sentence_index.get(evidence.document_id) or {}
@@ -389,12 +412,13 @@ def _resolve_sentence_evidence(
             evidence.document_id,
             sentence_ids,
         )
-        evidence.start_offset = None
-        evidence.end_offset = None
-        evidence.verified = False
-        evidence.sentence_ids = sentence_ids or None
-        evidence.text = None
-        return evidence
+        return EvidencePointer(
+            document_id=evidence.document_id,
+            start_offset=None,
+            end_offset=None,
+            text=None,
+            verified=False,
+        )
 
     start = min(sentence.start for sentence in matched)
     end = max(sentence.end for sentence in matched)
@@ -403,112 +427,65 @@ def _resolve_sentence_evidence(
     if doc_text is not None and 0 <= start < end <= len(doc_text):
         span_text = doc_text[start:end]
 
-    return ChecklistEvidence(
+    return EvidencePointer(
         document_id=evidence.document_id,
         start_offset=start,
         end_offset=end,
         text=span_text,
-        sentence_ids=sentence_ids or None,
         verified=True,
     )
-
-
-def _normalize_bins(collection: ChecklistBinCollection) -> ChecklistBinCollection:
-    by_id = {entry.bin_id: entry for entry in collection.bins}
-    normalized_bins: List[ChecklistBinResult] = []
-    for category_id in _CATEGORY_ORDER:
-        current = by_id.get(category_id)
-        if current is None:
-            normalized_bins.append(
-                ChecklistBinResult(
-                    bin_id=category_id,
-                    extraction=ChecklistBinExtractionPayload(reasoning="", extracted=[]),
-                )
-            )
-        else:
-            normalized_bins.append(current)
-    return ChecklistBinCollection(bins=normalized_bins)
-
-
-def _resolve_bin_collection(
-    collection: ChecklistBinCollection,
+def _resolve_evidence_items(
+    collection: LlmEvidenceCollection,
     sentence_index: Dict[int, Dict[int, TokenizedSentence]],
     text_lookup: Optional[Dict[int, str]] = None,
-) -> ChecklistBinCollection:
-    resolved_bins: List[ChecklistBinResult] = []
-    for bin_entry in collection.bins:
-        resolved_values: List[ChecklistBinValue] = []
-        for value in bin_entry.extraction.extracted or []:
-            resolved_evidence = [
-                _resolve_sentence_evidence(evidence, sentence_index, text_lookup) for evidence in value.evidence
-            ]
-            resolved_values.append(
-                ChecklistBinValue(
-                    value=value.value,
-                    evidence=resolved_evidence,
-                )
-            )
-        resolved_bins.append(
-            ChecklistBinResult(
-                bin_id=bin_entry.bin_id,
-                extraction=ChecklistBinExtractionPayload(
-                    reasoning=bin_entry.extraction.reasoning,
-                    extracted=resolved_values,
-                ),
+) -> EvidenceCollection:
+    resolved_items: List[EvidenceItem] = []
+    for item in collection.items:
+        resolved_pointer = _resolve_sentence_evidence(item.evidence, sentence_index, text_lookup)
+        resolved_items.append(
+            EvidenceItem(
+                bin_id=item.bin_id,
+                value=item.value,
+                evidence=resolved_pointer,
             )
         )
-    return ChecklistBinCollection(bins=resolved_bins)
+    return EvidenceCollection(items=resolved_items)
 
 
 def _strip_sentence_ids_from_collection(
-    collection: ChecklistBinCollection, text_lookup: Optional[Dict[int, str]] = None
-) -> ChecklistBinCollection:
-    """Return a copy with sentenceIds removed and evidence text populated when possible."""
-    cleaned_bins: List[ChecklistBinResult] = []
-    for bin_entry in collection.bins:
-        cleaned_values: List[ChecklistBinValue] = []
-        for value in bin_entry.extraction.extracted or []:
-            cleaned_evidence: List[ChecklistEvidence] = []
-            for evidence in value.evidence:
-                doc_text = (text_lookup or {}).get(evidence.document_id)
-                start = evidence.start_offset
-                end = evidence.end_offset
-                text = evidence.text
-                if doc_text is not None and start is not None and end is not None and 0 <= start < end <= len(doc_text):
-                    text = doc_text[start:end]
-                cleaned_evidence.append(
-                    ChecklistEvidence(
-                        document_id=evidence.document_id,
-                        start_offset=start,
-                        end_offset=end,
-                        text=text,
-                        verified=evidence.verified,
-                        sentence_ids=None,
-                    )
-                )
-            cleaned_values.append(
-                ChecklistBinValue(
-                    value=value.value,
-                    evidence=cleaned_evidence,
-                )
-            )
-        cleaned_bins.append(
-            ChecklistBinResult(
-                bin_id=bin_entry.bin_id,
-                extraction=ChecklistBinExtractionPayload(
-                    reasoning=bin_entry.extraction.reasoning,
-                    extracted=cleaned_values,
+    collection: EvidenceCollection, text_lookup: Optional[Dict[int, str]] = None
+) -> EvidenceCollection:
+    """Return a copy with evidence text populated when possible."""
+    cleaned_items: List[EvidenceItem] = []
+    for item in collection.items:
+        ev = item.evidence
+        doc_text = (text_lookup or {}).get(ev.document_id)
+        start = ev.start_offset
+        end = ev.end_offset
+        text = ev.text
+        if doc_text is not None and start is not None and end is not None and 0 <= start < end <= len(doc_text):
+            text = doc_text[start:end]
+        cleaned_items.append(
+            EvidenceItem(
+                bin_id=item.bin_id,
+                value=item.value,
+                evidence=EvidencePointer(
+                    document_id=ev.document_id,
+                    start_offset=start,
+                    end_offset=end,
+                    text=text,
+                    verified=ev.verified,
                 ),
             )
         )
-    return ChecklistBinCollection(bins=cleaned_bins)
+    return EvidenceCollection(items=cleaned_items)
 
 
-def build_category_collection(record: StoredDocumentChecklist) -> ChecklistCategoryCollection:
-    """Map bin-level checklist values into UI categories."""
+def build_category_collection(record: StoredDocumentChecklist) -> EvidenceCategoryCollection:
+    """Map extracted evidence items into UI categories."""
     sanitized_items = _strip_sentence_ids_from_collection(record.items)
-    categories: Dict[str, ChecklistCategory] = {
-        meta_id: ChecklistCategory(
+    categories: Dict[str, EvidenceCategory] = {
+        meta_id: EvidenceCategory(
             id=meta_id,
             label=_CATEGORY_LOOKUP[meta_id]["label"],
             color=_CATEGORY_LOOKUP[meta_id]["color"],
@@ -517,30 +494,38 @@ def build_category_collection(record: StoredDocumentChecklist) -> ChecklistCateg
         for meta_id in _CATEGORY_ORDER
     }
 
-    for bin_entry in sanitized_items.bins:
-        category = categories.get(bin_entry.bin_id)
+    bin_counters: Dict[str, int] = {meta_id: 0 for meta_id in _CATEGORY_ORDER}
+    ai_order: Dict[str, int] = {}
+    user_order: Dict[str, int] = {
+        _build_user_value_id(entry.id): idx for idx, entry in enumerate(record.user_items)
+    }
+
+    for index, item in enumerate(sanitized_items.items):
+        category = categories.get(item.bin_id)
         if not category:
             continue
-        extracted_values = bin_entry.extraction.extracted or []
-        for value_index, extracted in enumerate(extracted_values):
-            evidence = extracted.evidence[0] if extracted.evidence else None
-            category.values.append(
-                ChecklistCategoryValue(
-                    id=_build_ai_value_id(bin_entry.bin_id, value_index),
-                    value=extracted.value,
-                    text=extracted.value,
-                    document_id=evidence.document_id if evidence else None,
-                    start_offset=evidence.start_offset if evidence else None,
-                    end_offset=evidence.end_offset if evidence else None,
-                )
+        value_index = bin_counters[item.bin_id]
+        bin_counters[item.bin_id] += 1
+        ev = item.evidence
+        value_id = _build_ai_value_id(item.bin_id, value_index)
+        ai_order[value_id] = index
+        category.values.append(
+            EvidenceCategoryValue(
+                id=value_id,
+                value=item.value,
+                text=item.value,
+                document_id=ev.document_id,
+                start_offset=ev.start_offset,
+                end_offset=ev.end_offset,
             )
+        )
 
     for entry in record.user_items:
         category = categories.get(entry.category_id)
         if not category:
             continue
         category.values.append(
-            ChecklistCategoryValue(
+            EvidenceCategoryValue(
                 id=_build_user_value_id(entry.id),
                 value=entry.value,
                 text=entry.value,
@@ -553,6 +538,8 @@ def build_category_collection(record: StoredDocumentChecklist) -> ChecklistCateg
     for category in categories.values():
         category.values.sort(
             key=lambda value: (
+                0 if value.id in ai_order else 1,
+                ai_order.get(value.id, len(ai_order) + user_order.get(value.id, len(user_order))),
                 value.document_id is None,
                 value.document_id or 0,
                 value.start_offset if value.start_offset is not None else 0,
@@ -568,7 +555,7 @@ def build_category_collection(record: StoredDocumentChecklist) -> ChecklistCateg
         version=record.version,
     )
     combined_signature = _build_combined_signature(sanitized_record)
-    return ChecklistCategoryCollection(signature=combined_signature, categories=ordered)
+    return EvidenceCategoryCollection(signature=combined_signature, categories=ordered)
 
 
 def _build_ai_value_id(bin_id: str, value_index: int) -> str:
@@ -596,33 +583,27 @@ def _parse_value_identifier(value_id: str) -> Optional[Dict[str, object]]:
 
 
 def _remove_ai_value_from_collection(
-    collection: ChecklistBinCollection, bin_id: str, value_index: int
-) -> Optional[ChecklistBinCollection]:
-    updated_bins: List[ChecklistBinResult] = []
+    collection: EvidenceCollection, bin_id: str, value_index: int
+) -> Optional[EvidenceCollection]:
+    updated_items: List[EvidenceItem] = []
     removed = False
-    for bin_entry in collection.bins:
-        if bin_entry.bin_id != bin_id:
-            updated_bins.append(bin_entry)
-            continue
-        current_values = list(bin_entry.extraction.extracted or [])
-        if value_index < 0 or value_index >= len(current_values):
-            updated_bins.append(bin_entry)
-            continue
-        removed = True
-        next_values = [value for idx, value in enumerate(current_values) if idx != value_index]
-        next_extraction = ChecklistBinExtractionPayload(
-            reasoning=bin_entry.extraction.reasoning,
-            extracted=next_values,
-        )
-        updated_bins.append(ChecklistBinResult(bin_id=bin_entry.bin_id, extraction=next_extraction))
+    counter = 0
+    for item in collection.items:
+        if item.bin_id == bin_id:
+            if counter == value_index:
+                removed = True
+                counter += 1
+                continue
+            counter += 1
+        updated_items.append(item)
     if not removed:
         return None
-    return ChecklistBinCollection(bins=updated_bins)
+    return EvidenceCollection(items=updated_items)
 
 
-async def _refresh_cache(signature: str, collection: ChecklistBinCollection) -> None:
+async def _refresh_cache(signature: str, collection: EvidenceCollection) -> None:
     async with _DOCUMENT_CACHE_LOCK:
-        _DOCUMENT_CACHE[signature] = _copy_bin_collection(collection)
+        _DOCUMENT_CACHE[signature] = _copy_collection(collection)
 
 
 def append_user_checklist_value(
@@ -713,333 +694,34 @@ def _build_combined_signature(record: StoredDocumentChecklist) -> str:
     return f"{record.signature}:{digest.hexdigest()}"
 
 
-def _validate_evidence_offsets(
-    item_name: str,
-    extraction: ChecklistExtractionPayload,
-    text_lookup: Dict[int, str],
-) -> None:
-    whitespace_collapse = re.compile(r"\s+")
-
-    def _find_exact_matches(haystack: str, needle: str) -> List[int]:
-        matches: List[int] = []
-        start = 0
-        while True:
-            index = haystack.find(needle, start)
-            if index == -1:
-                break
-            matches.append(index)
-            start = index + 1
-        if matches:
-            return matches
-
-        haystack_lower = haystack.lower()
-        needle_lower = needle.lower()
-        if haystack_lower == haystack and needle_lower == needle:
-            return matches
-
-        start = 0
-        while True:
-            index = haystack_lower.find(needle_lower, start)
-            if index == -1:
-                break
-            matches.append(index)
-            start = index + 1
-        return matches
-
-    def _locate_regex_match(haystack: str, needle: str) -> tuple[int, int] | None:
-        stripped = needle.strip()
-        if not stripped:
-            return None
-        escaped = re.escape(stripped)
-        pattern = whitespace_collapse.sub(r"\\s+", escaped)
-        try:
-            regex = re.compile(pattern, re.IGNORECASE)
-        except re.error:
-            return None
-        match = regex.search(haystack)
-        if not match:
-            return None
-        return match.start(), match.end()
-
-    def _build_normalized_indices(text: str) -> tuple[str, List[int]]:
-        normalized_chars: List[str] = []
-        mapping: List[int] = []
-        i = 0
-        length = len(text)
-        while i < length:
-            ch = text[i]
-            if ch == "-" and i + 1 < length and text[i + 1] == "\n":
-                i += 2
-                continue
-            if ch == "\r":
-                i += 1
-                continue
-            if ch.isspace():
-                j = i + 1
-                while j < length:
-                    nxt = text[j]
-                    if nxt == "-" and j + 1 < length and text[j + 1] == "\n":
-                        j += 2
-                        continue
-                    if not nxt.isspace():
-                        break
-                    j += 1
-                normalized_chars.append(" ")
-                mapping.append(i)
-                i = j
-                continue
-            normalized_chars.append(ch)
-            mapping.append(i)
-            i += 1
-        return "".join(normalized_chars), mapping
-
-    def _locate_fuzzy(
-        haystack: str,
-        needle: str,
-        target: int,
-        document_id: int,
-    ) -> tuple[int, str, str] | None:
-        trimmed = needle.strip()
-        if not trimmed:
-            return None
-
-        haystack_len = len(haystack)
-        if haystack_len == 0:
-            return None
-
-        radius = max(len(trimmed) * 4, 1_500)
-        window_size = max(len(trimmed) + 120, 400)
-        start_bound = max(0, target - radius)
-        end_bound = min(haystack_len, target + radius)
-        if start_bound >= end_bound:
-            start_bound = max(0, min(target, haystack_len))
-            end_bound = min(haystack_len, start_bound + window_size)
-
-        windows: List[str] = []
-        offsets: List[int] = []
-        step = max(50, window_size // 2)
-        index = start_bound
-        while index < end_bound:
-            segment = haystack[index : min(haystack_len, index + window_size)]
-            if segment:
-                windows.append(segment)
-                offsets.append(index)
-            index += step
-
-        if not windows:
-            windows = [haystack]
-            offsets = [0]
-
-        result = process.extractOne(
-            needle,
-            windows,
-            scorer=fuzz.partial_ratio,
-            score_cutoff=78,
-        )
-        if not result:
-            lowered = needle.lower()
-            for idx, candidate in enumerate(windows):
-                if lowered in candidate.lower():
-                    result = (candidate, 80, idx)  # type: ignore[assignment]
-                    break
-            if not result:
-                return None
-
-        _, score, win_index = result
-        segment = windows[win_index]
-        base_offset = offsets[win_index]
-
-        lowered_segment = segment.lower()
-        lowered_needle = needle.lower()
-        relative = lowered_segment.find(lowered_needle)
-        span_length = len(needle)
-
-        if relative == -1:
-            matcher = SequenceMatcher(None, lowered_needle, lowered_segment)
-            match = matcher.find_longest_match(0, len(lowered_needle), 0, len(lowered_segment))
-            if match.size == 0:
-                return None
-            relative = match.b
-            span_length = max(match.size, len(trimmed))
-
-        absolute_start = base_offset + relative
-        absolute_end = min(haystack_len, absolute_start + span_length)
-        if absolute_start < 0 or absolute_start >= absolute_end:
-            return None
-
-        snippet = haystack[absolute_start:absolute_end]
-        if not snippet.strip():
-            return None
-
-        final_score = fuzz.partial_ratio(needle, snippet)
-        if final_score < 65:
-            return None
-
-        logger.debug(
-            "Fuzzy matched checklist evidence (item=%s, document_id=%s, score=%s, start=%s)",
-            item_name,
-            document_id,
-            final_score,
-            absolute_start,
-        )
-        return absolute_start, snippet, f"fuzzy_score={final_score}"
-
-    filtered_values = []
-    for extracted_item in extraction.extracted:
-        discard_value = False
-        validated_evidence: List[ChecklistEvidence] = []
-        for evidence in extracted_item.evidence:
-            doc_text = text_lookup.get(evidence.document_id)
-            if doc_text is None:
-                logger.warning(
-                    "Discarding checklist value due to missing document (item=%s, document_id=%s)",
-                    item_name,
-                    evidence.document_id,
-                )
-                discard_value = True
-                break
-
-            evidence.verified = False
-
-            if not isinstance(evidence.text, str):
-                logger.warning(
-                    "Evidence missing text for checklist item '%s' (document_id=%s); skipping verification.",
-                    item_name,
-                    evidence.document_id,
-                )
-                evidence.start_offset = None
-                validated_evidence.append(evidence)
-                continue
-
-            target_offset = evidence.start_offset if evidence.start_offset is not None else 0
-            matches = _find_exact_matches(doc_text, evidence.text)
-            replacement_text = evidence.text
-            chosen_start: int | None = None
-            chosen_end: int | None = None
-
-            if matches:
-                if len(matches) == 1:
-                    chosen_start = matches[0]
-                else:
-                    chosen_start = min(
-                        matches,
-                        key=lambda pos: (
-                            abs(pos - target_offset),
-                            pos,
-                        ),
-                    )
-                chosen_end = chosen_start + len(replacement_text)
-            else:
-                regex_match = _locate_regex_match(doc_text, evidence.text)
-                if regex_match is not None:
-                    chosen_start, chosen_end = regex_match
-                    replacement_text = doc_text[chosen_start:chosen_end]
-                    logger.debug(
-                        "Regex matched checklist evidence (item=%s, document_id=%s, start=%s)",
-                        item_name,
-                        evidence.document_id,
-                        chosen_start,
-                    )
-                else:
-                    normalized_text, index_map = _build_normalized_indices(doc_text)
-                    normalized_needle = whitespace_collapse.sub(" ", evidence.text.strip())
-                    normalized_pos = normalized_text.find(normalized_needle)
-                    if normalized_pos == -1:
-                        normalized_pos = normalized_text.lower().find(normalized_needle.lower())
-                    if normalized_pos != -1 and index_map:
-                        start_index = index_map[min(normalized_pos, len(index_map) - 1)]
-                        end_index = min(normalized_pos + len(normalized_needle) - 1, len(index_map) - 1)
-                        chosen_start = start_index
-                        chosen_end = index_map[end_index] + 1
-                        replacement_text = doc_text[chosen_start:chosen_end]
-                        logger.debug(
-                            "Whitespace-normalized match for checklist evidence (item=%s, document_id=%s, start=%s)",
-                            item_name,
-                            evidence.document_id,
-                            chosen_start,
-                        )
-                    else:
-                        fuzzy_match = _locate_fuzzy(
-                            doc_text,
-                            evidence.text,
-                            target_offset,
-                            evidence.document_id,
-                        )
-                        if fuzzy_match is None:
-                            logger.warning(
-                                "Unable to verify checklist evidence (item=%s, document_id=%s, provided_start=%s, text=%r)",
-                                item_name,
-                                evidence.document_id,
-                                evidence.start_offset,
-                                evidence.text[:120],
-                            )
-                        else:
-                            chosen_start, replacement_text, diagnostics = fuzzy_match
-                            chosen_end = chosen_start + len(replacement_text)
-                            logger.debug(
-                                "Fuzzy fallback accepted for checklist evidence (item=%s, document_id=%s, start=%s, diagnostics=%s)",
-                                item_name,
-                                evidence.document_id,
-                                chosen_start,
-                                diagnostics,
-                            )
-
-            if chosen_start is None or chosen_end is None:
-                evidence.start_offset = None
-                validated_evidence.append(evidence)
-                continue
-
-            if replacement_text != evidence.text:
-                logger.debug(
-                    "Adjusted checklist evidence text to align with document (item=%s, document_id=%s)",
-                    item_name,
-                    evidence.document_id,
-                )
-                evidence.text = replacement_text
-
-            if evidence.start_offset != chosen_start:
-                logger.debug(
-                    "Adjusted checklist evidence start offset (item=%s, document_id=%s, old_start=%s, new_start=%s)",
-                    item_name,
-                    evidence.document_id,
-                    evidence.start_offset,
-                    chosen_start,
-                )
-                evidence.start_offset = chosen_start
-
-            evidence.verified = True
-            validated_evidence.append(evidence)
-
-        if discard_value:
-            continue
-
-        extracted_item.evidence = validated_evidence
-        filtered_values.append(extracted_item)
-
-    extraction.extracted = filtered_values
-
-
-async def extract_document_checklists(case_id: str, documents: List[DocumentReference]) -> ChecklistBinCollection:
+async def extract_document_checklists(case_id: str, documents: List[DocumentReference]) -> EvidenceCollection:
     if not documents:
-        empty_bins = ChecklistBinCollection(
-            bins=[
-                ChecklistBinResult(
-                    bin_id=category_id,
-                    extraction=ChecklistBinExtractionPayload(
-                        reasoning="No documents were provided.",
-                        extracted=[],
-                    ),
-                )
-                for category_id in _CATEGORY_ORDER
-            ]
-        )
-        return empty_bins
+        return EvidenceCollection(items=[])
 
     cached, tokenized_docs, signature = await _resolve_cached_collection(case_id, documents)
     if cached is not None:
         logger.debug("Checklist extraction cache hit for signature %s", signature)
         return cached
 
+    async with _IN_FLIGHT_LOCK:
+        task = _IN_FLIGHT_EXTRACTIONS.get(signature)
+        if task is None or task.done():
+            task = asyncio.create_task(_run_extraction(case_id, tokenized_docs, signature))
+            _IN_FLIGHT_EXTRACTIONS[signature] = task
+
+    try:
+        result = await task
+    finally:
+        if task.done():
+            async with _IN_FLIGHT_LOCK:
+                current = _IN_FLIGHT_EXTRACTIONS.get(signature)
+                if current is task:
+                    _IN_FLIGHT_EXTRACTIONS.pop(signature, None)
+
+    return _copy_collection(result)
+
+
+async def _run_extraction(case_id: str, tokenized_docs: List[TokenizedDocument], signature: str) -> EvidenceCollection:
     case_documents_block = _build_case_documents_block(tokenized_docs)
     document_catalog_block = _build_document_catalog(tokenized_docs)
     checklist_bins_block = _build_checklist_bins_block()
@@ -1053,18 +735,15 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
     try:
         raw_response = await llm_service.generate_structured(
             prompt,
-            response_model=ChecklistBinCollection,
+            response_model=LlmEvidenceCollection,
         )
     except Exception:  # pylint: disable=broad-except
-        logger.exception("Failed to extract checklist bins for case %s", case_id)
+        logger.exception("Failed to extract evidence items for case %s", case_id)
         raise
 
-    normalized = _normalize_bins(raw_response)
     sentence_index = _build_sentence_index(tokenized_docs)
     text_lookup = {doc.document_id: doc.text for doc in tokenized_docs}
-    resolved = _resolve_bin_collection(normalized, sentence_index, text_lookup)
-    for bin_entry in resolved.bins:
-        _validate_evidence_offsets(bin_entry.bin_id, bin_entry.extraction, text_lookup)
+    resolved = _resolve_evidence_items(raw_response, sentence_index, text_lookup)
     sanitized = _strip_sentence_ids_from_collection(resolved, text_lookup)
 
     try:
@@ -1075,89 +754,72 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
     async with _DOCUMENT_CACHE_LOCK:
         cached_value = _DOCUMENT_CACHE.get(signature)
         if cached_value is None:
-            _DOCUMENT_CACHE[signature] = _copy_bin_collection(sanitized)
+            _DOCUMENT_CACHE[signature] = _copy_collection(sanitized)
             cached_value = _DOCUMENT_CACHE[signature]
 
-    return _copy_bin_collection(cached_value)
+    return _copy_collection(cached_value)
 
 
-def _build_summary_prompt(summary_text: str) -> str:
-    definitions_lines = [f"{item}: {description}" for item, description in _CHECKLIST_ITEM_DESCRIPTIONS.items()]
-    definitions_block = "\n".join(definitions_lines)
-    prompt_template = (
-        "You are reviewing a draft legal case summary. For each checklist item definition below, extract the"
-        " relevant information from the summary using the same JSON schema used for the document-driven extraction."
-        " If the summary lacks information for a checklist item, return an empty list for 'extracted' and briefly"
-        " explain that in 'reasoning'. Respond with JSON only.\n\n"
-        "Checklist item definitions:\n{checklist_definitions}\n\n"
-        "Summary:\n{summary_text}\n\n"
-        "Return JSON with the following structure:\n"
+def _build_summary_prompt(summary_text: str, tokenized_summary: List[TokenizedDocument]) -> str:
+    document_catalog_block = _build_document_catalog(tokenized_summary)
+    case_documents_block = _build_case_documents_block(tokenized_summary)
+    checklist_bins_block = _build_checklist_bins_block()
+
+    prompt = (
+        "You are extracting evidence from a draft case summary. Work through the sentences in order and return"
+        " evidence items in the same flat JSON schema used for document-driven extraction. Use the provided"
+        " document and sentence IDs exactly as shown; do not invent IDs.\n\n"
+        "# Document Catalog\n"
+        f"{document_catalog_block}\n\n"
+        "# Summary Sentences\n"
+        f"{case_documents_block}\n\n"
+        "# Evidence Bins\n"
+        f"{checklist_bins_block}\n\n"
+        "# Output Format\n"
         "{\n"
         '  "items": [\n'
         "    {\n"
-        '      "itemName": "<ChecklistItemName>",\n'
-        '      "extraction": {\n'
-        '        "reasoning": "<brief justification>",\n'
-        '        "extracted": [\n'
-        "          {\n"
-        '            "value": "<concise value>",\n'
-        '            "evidence": [\n'
-        "              {\n"
-        '                "text": "<exact summary quote>",\n'
-        f'                "documentId": {SUMMARY_DOCUMENT_ID},\n'
-        '                "startOffset": <integer start offset>\n'
-        "              }\n"
-        "            ]\n"
-        "          }\n"
-        "        ]\n"
+        '      "binId": "<evidence bin id>",\n'
+        '      "value": "<concise finding>",\n'
+        '      "evidence": {\n'
+        '        "documentId": <integer document id>,\n'
+        '        "sentenceIds": [<integer sentence ids from that document>]\n'
         "      }\n"
         "    }\n"
         "  ]\n"
-        "}\n"
+        "}\n\n"
+        "# Rules\n"
+        "1. Keep items in the order you encounter them while reading the summary.\n"
+        "2. Include every relevant bin even if no evidence is found (leave it absent rather than fabricating).\n"
+        "3. Use only the provided documentId and sentenceIds; do not quote text.\n"
     )
-
-    return (
-        prompt_template.replace("{checklist_definitions}", definitions_block).replace(
-            "{summary_text}", _truncate_text(summary_text, _MAX_SUMMARY_CHARS)
-        )
-    )
+    return prompt
 
 
-async def extract_summary_checklists(summary_text: str) -> ChecklistCollection:
+async def extract_summary_checklists(summary_text: str) -> EvidenceCollection:
     if not summary_text.strip():
-        return ChecklistCollection(
-            items=[
-                ChecklistItemResult(
-                    item_name=item,
-                    extraction=ChecklistExtractionPayload(
-                        reasoning="Summary text was empty.",
-                        extracted=[],
-                    ),
-                )
-                for item in _CHECKLIST_ITEM_DESCRIPTIONS
-            ]
-        )
+        return EvidenceCollection(items=[])
 
-    prompt = _build_summary_prompt(summary_text)
+    truncated, _ = _truncate_for_prompt(summary_text, _MAX_SUMMARY_CHARS)
+    payload = {
+        "id": SUMMARY_DOCUMENT_ID,
+        "title": "Summary",
+        "type": "",
+        "text": truncated,
+    }
+    tokenized_summary = [_tokenize_document(payload)]
+    prompt = _build_summary_prompt(truncated, tokenized_summary)
+
     try:
         response = await llm_service.generate_structured(
             prompt,
-            response_model=SummaryChecklistExtractionPayload,
+            response_model=LlmEvidenceCollection,
         )
-        text_lookup = {SUMMARY_DOCUMENT_ID: summary_text}
-        for item in response.items:
-            _validate_evidence_offsets(item.item_name, item.extraction, text_lookup)
     except Exception:  # pylint: disable=broad-except
-        logger.exception("Failed to extract checklist items from summary")
+        logger.exception("Failed to extract evidence items from summary text")
         raise
 
-    by_name = {item.item_name: item.extraction for item in response.items}
-    normalized_items: List[ChecklistItemResult] = []
-    for item_name in _CHECKLIST_ITEM_DESCRIPTIONS:
-        extraction = by_name.get(
-            item_name,
-            ChecklistExtractionPayload(reasoning="", extracted=[]),
-        )
-        normalized_items.append(ChecklistItemResult(item_name=item_name, extraction=extraction))
-
-    return ChecklistCollection(items=normalized_items)
+    sentence_index = _build_sentence_index(tokenized_summary)
+    text_lookup = {SUMMARY_DOCUMENT_ID: truncated}
+    resolved = _resolve_evidence_items(response, sentence_index, text_lookup)
+    return _strip_sentence_ids_from_collection(resolved, text_lookup)

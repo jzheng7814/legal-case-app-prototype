@@ -6,7 +6,7 @@ from typing import List, Optional
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from .documents import DocumentReference
-from .checklists import ChecklistBinCollection, ChecklistCollection
+from .checklists import EvidenceCollection
 
 
 class SuggestionType(str, Enum):
@@ -65,11 +65,11 @@ class SuggestionRequest(BaseModel):
 
 class SuggestionResponse(BaseModel):
     suggestions: List[Suggestion]
-    document_checklists: ChecklistBinCollection = Field(
+    document_checklists: EvidenceCollection = Field(
         serialization_alias="documentChecklists",
         validation_alias=AliasChoices("documentChecklists", "document_checklists"),
     )
-    summary_checklists: ChecklistCollection = Field(
+    summary_checklists: EvidenceCollection = Field(
         serialization_alias="summaryChecklists",
         validation_alias=AliasChoices("summaryChecklists", "summary_checklists"),
     )

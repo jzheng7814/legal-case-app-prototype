@@ -1,39 +1,30 @@
-You are assisting a lawyer in extracting key information from legal case documents. You will receive a catalog of documents followed by each document rendered as a numbered list of sentences. Use the sentence IDs to cite evidence—do not return text snippets or character offsets.
+You are assisting a lawyer in extracting key information from legal case documents. Read the documents in the order shown (docket first, then ECF order) and maintain a running case state as you progress. Use sentence IDs to cite evidence—do not return text snippets or character offsets.
 
 # Document Catalog
-Only use documents listed here. If a bin has no supporting sentences in these documents, leave `extracted` empty and explain briefly in `reasoning`.
+Documents are already ordered chronologically. Use only the documents listed here.
 
 {document_catalog}
 
 # Case Documents (Sentences)
-Each document is shown with numbered sentences. Reference sentences using their integer IDs for the corresponding document.
+Each document is shown with numbered sentences in the same order as the catalog. Reference sentences using their integer IDs for the corresponding document.
 
 {case_documents}
 
-# Checklist Bins
-Extract findings for each bin. For context, each bin lists member checklist items with their descriptions.
+# Evidence Bins
+Extract findings for each evidence bin. For context, each bin lists member checklist items with their descriptions.
 {checklist_bins}
 
 # Output Format
 Return **only** JSON in this structure:
 ```
 {
-  "bins": [
+  "items": [
     {
-      "binId": "<bin identifier>",
-      "extraction": {
-        "reasoning": "<brief summary of what was found or why nothing was returned>",
-        "extracted": [
-          {
-            "value": "<concise finding derived from the cited sentences>",
-            "evidence": [
-              {
-                "documentId": <integer document id>,
-                "sentenceIds": [<integer sentence ids from that document>]
-              }
-            ]
-          }
-        ]
+      "binId": "<evidence bin id>",
+      "value": "<concise finding derived from the cited sentences>",
+      "evidence": {
+        "documentId": <integer document id>,
+        "sentenceIds": [<integer sentence ids from that document>]
       }
     }
   ]
@@ -41,8 +32,7 @@ Return **only** JSON in this structure:
 ```
 
 # Rules
-1. Include every bin exactly once, even if `extracted` is empty.
-2. Use only the `documentId` and `sentenceIds` shown above; do not invent IDs or quote sentence text.
-3. Keep `extracted` and `evidence` as lists (they may be empty).
-4. If evidence is uncertain or partial, note that in `reasoning` and still provide the best available sentence IDs.
-5. Consider all supplied documents; do not stop after the first match.
+1. Keep items in the order you encounter them while reading the documents.
+2. Include as many items per bin as the evidence supports; do not assume one item is sufficient.
+3. Use only the `documentId` and `sentenceIds` shown above; do not invent IDs or quote sentence text.
+4. Consider all supplied documents; do not stop after the first match.

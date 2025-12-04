@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import textwrap
 import uuid
-from typing import Dict
+from typing import Dict, List, Optional
 
 from fastapi import BackgroundTasks, HTTPException
 
+from app.schemas.checklists import EvidenceCollection, EvidenceItem
+from app.schemas.documents import DocumentReference
 from app.schemas.summary import SummaryJob, SummaryJobStatus, SummaryRequest
+from app.services.checklists import extract_document_checklists
 from app.services.documents import get_document
 from app.services.llm import llm_service
 
@@ -31,32 +33,24 @@ async def _run_summary_job(job_id: str, case_id: str, request: SummaryRequest) -
     await _update_job(job_id, status=SummaryJobStatus.running)
 
     try:
-        compiled_context = []
-        for document in request.documents:
-            if document.include_full_text and document.content:
-                title = document.title or document.alias or document.id
-                compiled_context.append((document.id, title, document.content))
-            else:
-                doc = get_document(case_id, document.id)
-                title = document.title or document.alias or doc.title or doc.id
-                compiled_context.append((doc.id, title, doc.content))
-
-        merged_corpus = "\n\n".join(
-            f"Document {doc_id} — {doc_title}\n{textwrap.shorten(text, width=5000, placeholder=' …')}"
-            for doc_id, doc_title, text in compiled_context
-        )
+        sorted_docs = sorted(request.documents, key=_document_sort_key)
+        evidence = await extract_document_checklists(case_id, sorted_docs)
+        doc_titles = _build_document_titles(case_id, sorted_docs)
+        ordered_items = _order_evidence_items(evidence, doc_titles)
+        evidence_block = _format_evidence_block(ordered_items, doc_titles)
 
         instruction_block = request.instructions or (
-            "Produce a concise case summary highlighting parties, claims, procedural posture,"
-            " key evidence, and damages. Do not use headers, bullet points, or lists. Write"
-            " as if you were composing a short magazine article."
+            "Produce a concise, formal legal narrative highlighting parties, claims, procedural posture, key evidence, and outcomes."
+            " Follow the chronological flow of the evidence. Do not use headers, numbered sections, bullet points, or lists."
+            " Write in clear, objective prose with short paragraphs separated by line breaks; avoid colloquialisms and first/second person."
         )
 
-        prompt = textwrap.dedent(
-            f"""
-            You are drafting a precise legal case summary for an attorney.\n
-            Context documents:\n{merged_corpus}\n
-            Instructions: {instruction_block}\n"""
+        prompt = (
+            "You are drafting a precise legal case summary for an attorney.\n"
+            "Use the evidence below in the order presented (document order, then position within document) and maintain"
+            " a clear sense of the case state as it evolves.\n\n"
+            f"Evidence (chronological):\n{evidence_block}\n\n"
+            f"Instructions: {instruction_block}\n"
         )
 
         summary_text = await llm_service.generate_text(prompt)
@@ -83,3 +77,69 @@ async def get_summary_job(job_id: str) -> SummaryJob:
     if not job:
         raise HTTPException(status_code=404, detail="Summary job not found")
     return job
+
+
+def _parse_ecf_key(raw_value: Optional[str]) -> tuple[int, int, object]:
+    if raw_value is None:
+        return (1, 1, "")
+    text = str(raw_value).strip()
+    if not text:
+        return (1, 1, "")
+    try:
+        number = int(text)
+        return (0, 0, number)
+    except (TypeError, ValueError):
+        return (0, 1, text)
+
+
+def _document_sort_key(document: DocumentReference) -> tuple:
+    ecf_flags = _parse_ecf_key(getattr(document, "ecf_number", None))
+    return (
+        0 if getattr(document, "is_docket", False) else 1,
+        ecf_flags[0],
+        ecf_flags[1],
+        ecf_flags[2],
+        document.id,
+    )
+
+
+def _build_document_titles(case_id: str, documents: List[DocumentReference]) -> Dict[int, str]:
+    titles: Dict[int, str] = {}
+    for ref in documents:
+        display_title = ref.title or ref.alias
+        if display_title is None:
+            try:
+                doc = get_document(case_id, ref.id)
+                display_title = doc.title or doc.id
+            except Exception:  # pylint: disable=broad-except
+                display_title = ref.id
+        titles[int(ref.id)] = str(display_title)
+    return titles
+
+
+def _order_evidence_items(evidence: EvidenceCollection, titles: Dict[int, str]) -> List[EvidenceItem]:
+    doc_order = {doc_id: idx for idx, doc_id in enumerate(titles.keys())}
+    return sorted(
+        evidence.items,
+        key=lambda item: (
+            doc_order.get(item.evidence.document_id, len(doc_order)),
+            item.evidence.start_offset if item.evidence.start_offset is not None else 0,
+        ),
+    )
+
+
+def _format_evidence_block(items: List[EvidenceItem], titles: Dict[int, str]) -> str:
+    lines: List[str] = []
+    for item in items:
+        doc_id = item.evidence.document_id
+        title = titles.get(doc_id, f"Document {doc_id}")
+        evidence_text = item.evidence.text or ""
+        evidence_text = evidence_text.replace("\n", " ").strip()
+        if len(evidence_text) > 400:
+            evidence_text = evidence_text[:400] + " …"
+        snippet = f' "{evidence_text}"' if evidence_text else ""
+        offset_part = ""
+        if item.evidence.start_offset is not None and item.evidence.end_offset is not None:
+            offset_part = f" offsets [{item.evidence.start_offset}-{item.evidence.end_offset}]"
+        lines.append(f"- Doc {doc_id} — {title}: [{item.bin_id}] {item.value}{offset_part}{snippet}")
+    return "\n".join(lines)

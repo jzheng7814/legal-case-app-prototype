@@ -37,10 +37,10 @@ async def generate_suggestions(case_id: str, request: SuggestionRequest) -> Sugg
     summary_checklists_json = json.dumps(summary_checklists.model_dump(by_alias=True), indent=2)
 
     prompt = (
-        "You are an expert legal copy editor. Use the checklist extracted from the source documents as the ground"
-        " truth for what the summary must cover. Compare it to the checklist extracted from the current summary to"
+        "You are an expert legal copy editor. Use the extracted evidence from the source documents (grouped by evidence bins)"
+        " as the ground truth for what the summary must cover. Compare it to the evidence extracted from the current summary to"
         " spot missing content, inaccuracies, and opportunities to improve precision. Recommend high-impact edits to"
-        " the summary that address those issues. For each suggestion comment, explicitly mention the checklist gap or"
+        " the summary that address those issues. For each suggestion comment, explicitly mention the evidence gap or"
         " discrepancy it resolves. Each suggestion must target a unique, non-overlapping span of text."
         " Respond with a single JSON object that matches the provided schema exactly."
         " Do not include markdown fences, commentary, or additional keys."

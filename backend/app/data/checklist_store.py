@@ -9,13 +9,13 @@ from typing import Any, Dict, Optional, Protocol
 
 from pydantic import ValidationError
 
-from app.schemas.checklists import ChecklistBinCollection
+from app.schemas.checklists import EvidenceCollection
 
 logger = logging.getLogger(__name__)
 
-DocumentChecklistPayload = ChecklistBinCollection
+DocumentChecklistPayload = EvidenceCollection
 
-_CHECKLIST_STORE_VERSION = "sentence-bins-v1"
+_CHECKLIST_STORE_VERSION = "evidence-items-v1"
 
 
 @dataclass(frozen=True)
@@ -176,30 +176,30 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
                     logger.warning("Unable to clean up temporary checklist store file %s.", tmp_path)
 
 
-def _coerce_to_collection(raw_items: Any) -> Optional[ChecklistBinCollection]:
-    if isinstance(raw_items, ChecklistBinCollection):
+def _coerce_to_collection(raw_items: Any) -> Optional[EvidenceCollection]:
+    if isinstance(raw_items, EvidenceCollection):
         return raw_items
 
     payload: Dict[str, Any]
     if isinstance(raw_items, dict):
-        if "bins" in raw_items or "items" in raw_items:
+        if "items" in raw_items:
             payload = raw_items
         else:
             entries = []
-            for name, value in raw_items.items():
-                if not isinstance(name, str) or not isinstance(value, dict):
+            for value in raw_items.values():
+                if not isinstance(value, dict):
                     return None
-                entries.append({"binId": name, "extraction": value})
-            payload = {"bins": entries}
+                entries.append(value)
+            payload = {"items": entries}
     elif isinstance(raw_items, list):
-        payload = {"bins": raw_items}
+        payload = {"items": raw_items}
     else:
         return None
 
     try:
-        return ChecklistBinCollection.model_validate(payload)
+        return EvidenceCollection.model_validate(payload)
     except ValidationError:
-        logger.debug("Checklist collection payload failed validation.")
+        logger.debug("Evidence collection payload failed validation.")
         return None
 
 

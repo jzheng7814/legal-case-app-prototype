@@ -7,30 +7,67 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 SUMMARY_DOCUMENT_ID = -1
 
 
-class ChecklistEvidence(BaseModel):
-    text: Optional[str] = None
+class LlmEvidencePointer(BaseModel):
+    """Evidence anchor returned directly by the LLM (sentence-level)."""
+
     document_id: int = Field(
         ...,
         serialization_alias="documentId",
-        validation_alias=AliasChoices("document_id", "documentId", "source_document", "sourceDocument"),
+        validation_alias=AliasChoices("documentId", "document_id", "source_document", "sourceDocument"),
     )
-    start_offset: int | None = Field(
+    sentence_ids: List[int] = Field(
+        ...,
+        min_length=1,
+        serialization_alias="sentenceIds",
+        validation_alias=AliasChoices("sentenceIds", "sentence_ids"),
+    )
+
+    @field_validator("document_id", mode="before")
+    @classmethod
+    def _require_integer_document_id(cls, value: object) -> int:
+        if isinstance(value, int):
+            return value
+        raise TypeError("document_id must be provided as an integer")
+
+    @field_validator("sentence_ids", mode="before")
+    @classmethod
+    def _coerce_sentence_ids(cls, value: object) -> List[int]:
+        if isinstance(value, (list, tuple)):
+            result: List[int] = []
+            for entry in value:
+                if not isinstance(entry, int):
+                    raise TypeError("sentence_ids must be a list of integers")
+                result.append(entry)
+            return result
+        raise TypeError("sentence_ids must be provided as a list of integers")
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class EvidencePointer(BaseModel):
+    """Offset-based evidence anchor used after resolution/storage."""
+
+    document_id: int = Field(
+        ...,
+        serialization_alias="documentId",
+        validation_alias=AliasChoices("documentId", "document_id", "source_document", "sourceDocument"),
+    )
+    start_offset: Optional[int] = Field(
         None,
         ge=0,
         serialization_alias="startOffset",
-        validation_alias=AliasChoices("start_offset", "startOffset"),
+        validation_alias=AliasChoices("startOffset", "start_offset"),
     )
-    end_offset: int | None = Field(
+    end_offset: Optional[int] = Field(
         None,
         ge=0,
         serialization_alias="endOffset",
-        validation_alias=AliasChoices("end_offset", "endOffset"),
+        validation_alias=AliasChoices("endOffset", "end_offset"),
     )
-    sentence_ids: Optional[List[int]] = Field(
-        default=None,
-        serialization_alias="sentenceIds",
-        validation_alias=AliasChoices("sentenceIds", "sentence_ids"),
-        exclude=True,
+    text: Optional[str] = Field(
+        None,
+        serialization_alias="text",
+        validation_alias=AliasChoices("text",),
     )
     verified: bool = Field(
         True,
@@ -45,55 +82,28 @@ class ChecklistEvidence(BaseModel):
             return value
         raise TypeError("document_id must be provided as an integer")
 
-    @field_validator("sentence_ids", mode="before")
-    @classmethod
-    def _coerce_sentence_ids(cls, value: object) -> Optional[List[int]]:
-        if value is None:
-            return None
-        if isinstance(value, (list, tuple)):
-            result: List[int] = []
-            for entry in value:
-                if not isinstance(entry, int):
-                    raise TypeError("sentence_ids must be a list of integers")
-                result.append(entry)
-            return result
-        raise TypeError("sentence_ids must be provided as a list of integers")
-
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
-class ChecklistValue(BaseModel):
+class LlmEvidenceItem(BaseModel):
+    """Single extracted item tagged to an evidence bin (LLM response shape)."""
+
+    bin_id: str = Field(
+        ...,
+        serialization_alias="binId",
+        validation_alias=AliasChoices("binId", "bin_id", "category_id", "categoryId"),
+    )
     value: str
-    evidence: List[ChecklistEvidence]
+    evidence: LlmEvidencePointer
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
-class ChecklistExtractionPayload(BaseModel):
-    reasoning: str
-    extracted: List[ChecklistValue]
+class LlmEvidenceCollection(BaseModel):
+    """Flat collection of extracted evidence items as emitted by the LLM."""
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class ChecklistItemResult(BaseModel):
-    item_name: str = Field(
-        ...,
-        serialization_alias="itemName",
-        validation_alias=AliasChoices("itemName", "item_name", "name"),
-    )
-    extraction: ChecklistExtractionPayload = Field(
-        ...,
-        serialization_alias="extraction",
-        validation_alias=AliasChoices("extraction", "result", "payload"),
-    )
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class ChecklistCollection(BaseModel):
-    items: List[ChecklistItemResult] = Field(
-        ...,
+    items: List[LlmEvidenceItem] = Field(
+        default_factory=list,
         serialization_alias="items",
         validation_alias=AliasChoices("items", "entries"),
     )
@@ -101,80 +111,33 @@ class ChecklistCollection(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
-class SummaryChecklistExtractionPayload(ChecklistCollection):
-    """Structured output for summary-driven checklist extraction."""
+class EvidenceItem(BaseModel):
+    """Offset-based evidence item after resolution."""
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class ChecklistSentenceEvidence(BaseModel):
-    document_id: int = Field(
-        ...,
-        serialization_alias="documentId",
-        validation_alias=AliasChoices("documentId", "document_id"),
-    )
-    sentence_ids: List[int] = Field(
-        ...,
-        serialization_alias="sentenceIds",
-        validation_alias=AliasChoices("sentenceIds", "sentence_ids"),
-        min_length=1,
-    )
-
-    @field_validator("sentence_ids", mode="before")
-    @classmethod
-    def _coerce_sentence_ids(cls, value: object) -> List[int]:
-        if isinstance(value, (list, tuple)):
-            result: List[int] = []
-            for entry in value:
-                if not isinstance(entry, int):
-                    raise TypeError("sentence_ids must be a list of integers")
-                result.append(entry)
-            return result
-        raise TypeError("sentence_ids must be a list of integers")
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class ChecklistBinValue(BaseModel):
-    value: str
-    evidence: List[ChecklistEvidence]
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class ChecklistBinExtractionPayload(BaseModel):
-    reasoning: str
-    extracted: List[ChecklistBinValue]
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class ChecklistBinResult(BaseModel):
     bin_id: str = Field(
         ...,
         serialization_alias="binId",
-        validation_alias=AliasChoices("bin_id", "binId", "id"),
+        validation_alias=AliasChoices("binId", "bin_id", "category_id", "categoryId"),
     )
-    extraction: ChecklistBinExtractionPayload = Field(
-        ...,
-        serialization_alias="extraction",
-        validation_alias=AliasChoices("extraction", "result", "payload"),
+    value: str
+    evidence: EvidencePointer
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class EvidenceCollection(BaseModel):
+    """Flat collection of resolved evidence items."""
+
+    items: List[EvidenceItem] = Field(
+        default_factory=list,
+        serialization_alias="items",
+        validation_alias=AliasChoices("items", "entries"),
     )
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
-class ChecklistBinCollection(BaseModel):
-    bins: List[ChecklistBinResult] = Field(
-        ...,
-        serialization_alias="bins",
-        validation_alias=AliasChoices("bins", "items", "entries"),
-    )
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class ChecklistCategoryValue(BaseModel):
+class EvidenceCategoryValue(BaseModel):
     id: str
     value: str
     text: Optional[str] = None
@@ -199,33 +162,18 @@ class ChecklistCategoryValue(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
-class ChecklistCategory(BaseModel):
+class EvidenceCategory(BaseModel):
     id: str
     label: str
     color: str
-    values: List[ChecklistCategoryValue] = Field(default_factory=list)
+    values: List[EvidenceCategoryValue] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
-class ChecklistCategoryCollection(BaseModel):
+class EvidenceCategoryCollection(BaseModel):
     signature: str
-    categories: List[ChecklistCategory]
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class ChecklistStatusResponse(BaseModel):
-    checklist_status: str = Field(
-        ...,
-        serialization_alias="checklistStatus",
-        validation_alias=AliasChoices("checklistStatus", "checklist_status"),
-    )
-    document_checklists: Optional[ChecklistBinCollection] = Field(
-        default=None,
-        serialization_alias="documentChecklists",
-        validation_alias=AliasChoices("documentChecklists", "document_checklists"),
-    )
+    categories: List[EvidenceCategory]
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -254,5 +202,20 @@ class ChecklistItemCreateRequest(BaseModel):
     @property
     def value(self) -> str:
         return self.text
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ChecklistStatusResponse(BaseModel):
+    checklist_status: str = Field(
+        ...,
+        serialization_alias="checklistStatus",
+        validation_alias=AliasChoices("checklistStatus", "checklist_status"),
+    )
+    document_checklists: Optional[EvidenceCollection] = Field(
+        default=None,
+        serialization_alias="documentChecklists",
+        validation_alias=AliasChoices("documentChecklists", "document_checklists"),
+    )
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
