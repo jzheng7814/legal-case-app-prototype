@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import DocumentsPanel from '../DocumentsPanel';
 import { useChecklist, useDocuments, useHighlight } from '../state/WorkspaceProvider';
+import DividerHandle from './DividerHandle';
 
-const ChecklistPage = ({ isActive }) => {
+const ChecklistPage = ({ isActive, split = 30, onSplitChange }) => {
     const { categories, isLoading, addItem, deleteItem } = useChecklist();
     const documents = useDocuments();
     const {
@@ -203,8 +204,11 @@ const ChecklistPage = ({ isActive }) => {
     const isChecklistReady = !effectiveLoading && sortedCategories.length > 0;
 
     return (
-        <div className="flex flex-1 overflow-hidden bg-[var(--color-surface-panel-alt)]">
-            <div className="w-[40%] shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface-panel)] flex flex-col overflow-hidden">
+        <div className="flex flex-1 overflow-hidden bg-[var(--color-surface-panel-alt)] min-w-0">
+            <div
+                className="shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface-panel)] flex flex-col overflow-hidden min-w-0"
+                style={{ flexBasis: `${split}%` }}
+            >
                 <div className="border-b border-[var(--color-border)] px-4 py-3">
                     <div className="flex items-center justify-between">
                         <div>
@@ -322,7 +326,11 @@ const ChecklistPage = ({ isActive }) => {
                     )}
                 </div>
             </div>
-            <div className="flex flex-1 min-h-0 relative">
+            <DividerHandle onMouseDown={onSplitChange} />
+            <div
+                className="flex flex-1 min-h-0 min-w-0 relative"
+                style={{ flexBasis: `${100 - split}%` }}
+            >
                 <DocumentsPanel />
                 {selectionAvailable && (
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[var(--color-overlay-scrim)] px-3 py-1 text-xs text-[var(--color-text-inverse)] shadow">

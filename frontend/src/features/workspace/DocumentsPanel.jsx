@@ -58,13 +58,13 @@ const DocumentsPanel = () => {
     }, [activeChecklistHighlights, documentRef, currentDocumentText]);
 
     return (
-        <div className="flex-1 bg-[var(--color-surface-panel)] flex flex-col border-l border-[var(--color-border)] min-h-0">
+        <div className="flex-1 bg-[var(--color-surface-panel)] flex flex-col border-l border-[var(--color-border)] min-h-0 min-w-0">
             <div className="border-b border-[var(--color-border)] px-4 py-3">
                 <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Document Viewer</h2>
                 <p className="text-xs text-[var(--color-text-muted)]">Select spans to add checklist entries. Highlights show captured facts.</p>
             </div>
 
-            <div className="flex-1 p-4 flex flex-col space-y-4 min-h-0 overflow-hidden">
+            <div className="flex-1 p-4 flex flex-col space-y-4 min-h-0 min-w-0 overflow-hidden">
                 {documents.length > 0 ? (
                     <select
                         value={selectedDocument != null ? String(selectedDocument) : ''}
@@ -74,7 +74,7 @@ const DocumentsPanel = () => {
                                 setSelectedDocument(nextValue);
                             }
                         }}
-                        className="px-3 py-2 border border-[var(--color-input-border)] rounded-md bg-[var(--color-input-bg)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                        className="w-full px-3 py-2 border border-[var(--color-input-border)] rounded-md bg-[var(--color-input-bg)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                     >
                         {documents.map((doc) => (
                             <option key={doc.id} value={String(doc.id)}>
@@ -89,12 +89,12 @@ const DocumentsPanel = () => {
                     </div>
                 )}
 
-                <div className="relative flex-1 min-h-0 overflow-hidden">
+                <div className="relative flex-1 min-h-0 min-w-0 overflow-hidden">
                     <div
                         ref={documentRef}
-                        className="relative h-full w-full bg-[var(--color-surface-panel-alt)] border border-[var(--color-border)] rounded-md p-4 overflow-y-auto overscroll-contain cursor-text"
+                        className="relative h-full w-full bg-[var(--color-surface-panel-alt)] border border-[var(--color-border)] rounded-md p-4 overflow-y-auto overflow-x-auto overscroll-contain cursor-text"
                     >
-                        <pre className="text-xs leading-relaxed font-mono whitespace-pre-wrap text-[var(--color-text-primary)] min-h-full w-full">
+                        <pre className="text-xs leading-relaxed font-mono whitespace-pre-wrap break-words text-[var(--color-text-primary)] min-h-full w-full">
                             {currentDocumentText}
                         </pre>
                         {categoryHighlights.map((entry) =>
@@ -108,7 +108,7 @@ const DocumentsPanel = () => {
                                         width: rect.width,
                                         height: rect.height,
                                         backgroundColor: entry.color,
-                                        opacity: 0.05,
+                                        opacity: 0.1,
                                         zIndex: 5,
                                         borderColor: 'var(--color-surface-panel-ghost)'
                                     }}

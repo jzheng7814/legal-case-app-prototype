@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import WorkspaceStateProvider from './state/WorkspaceProvider';
 import CanvasPage from './components/CanvasPage';
 import ChecklistPage from './components/ChecklistPage';
@@ -7,6 +7,47 @@ import ThemeToggle from '../../theme/ThemeToggle';
 
 const SummaryWorkspaceView = ({ onExit }) => {
     const [activePage, setActivePage] = useState('canvas');
+    const [canvasSplit, setCanvasSplit] = useState(30);
+    const [checklistSplit, setChecklistSplit] = useState(30);
+    const workspaceRef = useRef(null);
+    const dragCleanupRef = useRef(null);
+
+    const clampSplit = useCallback((value) => Math.min(80, Math.max(20, value)), []);
+
+    const startDrag = useCallback((setSplit) => (event) => {
+        event.preventDefault();
+        const handleMouseMove = (moveEvent) => {
+            if (!workspaceRef.current) {
+                return;
+            }
+            const rect = workspaceRef.current.getBoundingClientRect();
+            if (!rect.width) {
+                return;
+            }
+            const relativeX = moveEvent.clientX - rect.left;
+            const percentage = clampSplit((relativeX / rect.width) * 100);
+            setSplit(percentage);
+        };
+        const handleMouseUp = () => {
+            dragCleanupRef.current?.();
+        };
+        const cleanup = () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+            dragCleanupRef.current = null;
+        };
+
+        dragCleanupRef.current?.();
+        dragCleanupRef.current = cleanup;
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    }, [clampSplit]);
+
+    useEffect(() => {
+        return () => {
+            dragCleanupRef.current?.();
+        };
+    }, []);
 
     return (
         <div className="min-h-screen bg-[var(--color-surface-app)] text-[var(--color-text-primary)] transition-colors">
@@ -47,8 +88,20 @@ const SummaryWorkspaceView = ({ onExit }) => {
                 </div>
             </div>
 
-            <div className="flex h-[calc(100vh-96px)] overflow-hidden bg-[var(--color-surface-panel-alt)]">
-                {activePage === 'canvas' ? <CanvasPage isActive /> : <ChecklistPage isActive />}
+            <div ref={workspaceRef} className="flex h-[calc(100vh-96px)] overflow-hidden bg-[var(--color-surface-panel-alt)]">
+                {activePage === 'canvas' ? (
+                    <CanvasPage
+                        isActive
+                        split={canvasSplit}
+                        onSplitChange={startDrag(setCanvasSplit)}
+                    />
+                ) : (
+                    <ChecklistPage
+                        isActive
+                        split={checklistSplit}
+                        onSplitChange={startDrag(setChecklistSplit)}
+                    />
+                )}
             </div>
 
             <SuggestionPopup />
