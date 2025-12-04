@@ -44,7 +44,7 @@ const normaliseCategories = (payload) => {
 const useChecklistStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
     const [categories, setCategories] = useState([]);
     const [signature, setSignature] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
 
     const resolvedCaseId = useMemo(() => normaliseCaseId(caseId), [caseId]);

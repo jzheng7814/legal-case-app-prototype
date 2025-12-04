@@ -108,7 +108,7 @@ const DocumentsPanel = () => {
                                         width: rect.width,
                                         height: rect.height,
                                         backgroundColor: entry.color,
-                                        opacity: 0.25,
+                                        opacity: 0.05,
                                         zIndex: 5,
                                         borderColor: 'var(--color-surface-panel-ghost)'
                                     }}

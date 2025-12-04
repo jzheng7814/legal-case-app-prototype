@@ -32,6 +32,7 @@ const useHighlightStore = ({ summary, documents }) => {
     const [highlightedContext, setHighlightedContext] = useState(null);
     const [persistentSuggestionPopup, setPersistentSuggestionPopup] = useState(null);
     const [pendingHighlight, setPendingHighlight] = useState(null);
+    const [pendingScroll, setPendingScroll] = useState(null);
     const [activeHighlight, setActiveHighlight] = useState(null);
     const [highlightRects, setHighlightRects] = useState([]);
     const [rejectedSuggestions, setRejectedSuggestions] = useState(() => new Set());
@@ -81,7 +82,7 @@ const useHighlightStore = ({ summary, documents }) => {
         if (!document.getElementById('workspace-highlight-style')) {
             const styleEl = document.createElement('style');
             styleEl.id = 'workspace-highlight-style';
-            styleEl.textContent = '::highlight(' + CSS_HIGHLIGHT_KEY + ') { background-color: rgba(250, 204, 21, 0.35); }';
+            styleEl.textContent = '::highlight(' + CSS_HIGHLIGHT_KEY + ') { background-color: rgba(250, 204, 21, 0.08); color: var(--color-text-primary); }';
             document.head.appendChild(styleEl);
         }
     }, []);
@@ -460,6 +461,39 @@ const useHighlightStore = ({ summary, documents }) => {
         }
     }, [clearActiveHighlight, documents, summary.suggestions, summary.summaryRef]);
 
+    const jumpToDocumentRange = useCallback(({ documentId, range }) => {
+        if (!range || range.start == null || range.end == null || range.start === range.end) {
+            return;
+        }
+        const targetDocumentId = documentId ?? documents.selectedDocument;
+        const performScroll = () => {
+            const container = documents.documentRef.current;
+            if (!container) {
+                return;
+            }
+            const domRange = createRangeFromOffsets(container, range.start, range.end);
+            if (domRange) {
+                scrollRangeIntoView(container, domRange);
+            }
+        };
+
+        if (
+            targetDocumentId != null &&
+            targetDocumentId !== documents.selectedDocument &&
+            documents.documents.some((doc) => doc.id === targetDocumentId)
+        ) {
+            setPendingScroll({ documentId: targetDocumentId, range });
+            documents.setSelectedDocument(targetDocumentId);
+            return;
+        }
+
+        if (targetDocumentId == null) {
+            return;
+        }
+
+        performScroll();
+    }, [documents.documents, documents.documentRef, documents.selectedDocument, documents.setSelectedDocument]);
+
     useEffect(() => {
         if (!pendingHighlight) {
             return;
@@ -512,6 +546,27 @@ const useHighlightStore = ({ summary, documents }) => {
 
         requestAnimationFrame(applyHighlight);
     }, [applyCssHighlight, clearActiveHighlight, documents.documentRef, documents.selectedDocument, pendingHighlight, summary.isEditMode, summary.summaryRef]);
+
+    useEffect(() => {
+        if (!pendingScroll) {
+            return;
+        }
+        if (
+            pendingScroll.documentId != null &&
+            pendingScroll.documentId !== documents.selectedDocument
+        ) {
+            return;
+        }
+        const container = documents.documentRef.current;
+        if (!container) {
+            return;
+        }
+        const domRange = createRangeFromOffsets(container, pendingScroll.range.start, pendingScroll.range.end);
+        if (domRange) {
+            scrollRangeIntoView(container, domRange);
+        }
+        setPendingScroll(null);
+    }, [documents.documentRef, documents.selectedDocument, pendingScroll]);
 
     useEffect(() => {
         if (!activeHighlight || !activeHighlight.useOverlay) {
@@ -580,6 +635,7 @@ const useHighlightStore = ({ summary, documents }) => {
         rejectSuggestion,
         startSuggestionDiscussion,
         handleContextClick,
+        jumpToDocumentRange,
         clearActiveHighlight,
         setInteractionMode,
         interactionMode,
@@ -592,6 +648,7 @@ const useHighlightStore = ({ summary, documents }) => {
         handlePopupLeave,
         handleSuggestionHover,
         handleSuggestionLeave,
+        jumpToDocumentRange,
         highlightedContext,
         highlightRects,
         hoveredSuggestion,

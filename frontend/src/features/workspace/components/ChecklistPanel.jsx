@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ClipboardList } from 'lucide-react';
 import { SUMMARY_DOCUMENT_ID } from '../constants';
 
@@ -86,10 +86,7 @@ const resolveEvidenceMeta = (evidenceItem = {}) => {
     const startOffset = Number.isFinite(parsedStart) ? parsedStart : null;
     const endOffset = Number.isFinite(parsedEnd) ? parsedEnd : null;
     const isVerified = evidenceItem.verified !== false;
-    const sentenceIds = Array.isArray(evidenceItem.sentenceIds ?? evidenceItem.sentence_ids)
-        ? (evidenceItem.sentenceIds ?? evidenceItem.sentence_ids)
-        : [];
-    return { documentId, startOffset, endOffset, isVerified, sentenceIds };
+    return { documentId, startOffset, endOffset, isVerified };
 };
 
 const ChecklistColumn = ({
@@ -98,9 +95,40 @@ const ChecklistColumn = ({
     onAdd,
     source,
     onEvidenceNavigate,
-    resolveDocumentTitle = () => null
+    resolveDocumentTitle = () => null,
+    resolveDocumentText = () => null
 }) => {
     const entries = useMemo(() => normaliseChecklistEntries(items), [items]);
+    const [expandedEvidence, setExpandedEvidence] = useState(() => new Set());
+
+    const toggleEvidence = useCallback((key) => {
+        setExpandedEvidence((current) => {
+            const next = new Set(current);
+            if (next.has(key)) {
+                next.delete(key);
+            } else {
+                next.add(key);
+            }
+            return next;
+        });
+    }, []);
+
+    const extractEvidenceText = useCallback(
+        (documentId, startOffset, endOffset, fallbackText) => {
+            const text = resolveDocumentText(documentId);
+            if (
+                text &&
+                startOffset != null &&
+                endOffset != null &&
+                endOffset > startOffset &&
+                endOffset <= text.length
+            ) {
+                return text.slice(startOffset, endOffset);
+            }
+            return typeof fallbackText === 'string' ? fallbackText : null;
+        },
+        [resolveDocumentText]
+    );
 
     return (
         <div className="flex flex-col min-h-0 bg-[var(--color-surface-panel)] border border-[var(--color-border)] rounded-lg shadow-sm">
@@ -146,29 +174,35 @@ const ChecklistColumn = ({
                                             {Array.isArray(entry.evidence) && entry.evidence.length > 0 && (
                                                 <ul className="mt-2 space-y-1">
                                                     {entry.evidence.map((evidenceItem, evidenceIndex) => {
-                                                        const { documentId, startOffset, endOffset, isVerified, sentenceIds } = resolveEvidenceMeta(evidenceItem);
+                                                        const { documentId, startOffset, endOffset, isVerified } = resolveEvidenceMeta(evidenceItem);
+                                                        const evidenceText = extractEvidenceText(
+                                                            documentId,
+                                                            startOffset,
+                                                            endOffset,
+                                                            evidenceItem?.text
+                                                        );
+                                                        const evidenceKey = `${itemName}-${index}-${evidenceIndex}`;
+                                                        const isExpanded = expandedEvidence.has(evidenceKey);
                                                         const hasExactRange =
-                                                            isVerified &&
                                                             startOffset != null &&
                                                             endOffset != null &&
                                                             endOffset > startOffset;
                                                         const canNavigate =
                                                             typeof onEvidenceNavigate === 'function' &&
-                                                            documentId != null;
+                                                            documentId != null &&
+                                                            hasExactRange;
                                                         const docTitle =
                                                             documentId === SUMMARY_DOCUMENT_ID
                                                                 ? 'Summary'
                                                                 : resolveDocumentTitle(documentId);
-                                                        const offsetLabel = hasExactRange
-                                                            ? ` · chars ${startOffset}-${endOffset}`
-                                                            : sentenceIds.length
-                                                                ? ` · sentences ${sentenceIds.join(', ')}`
-                                                                : '';
                                                         const resolvedLabel = docTitle
-                                                            ? `${docTitle}${documentId != null && documentId !== SUMMARY_DOCUMENT_ID ? ` (ID ${documentId})` : ''}`
+                                                            ? docTitle
                                                             : documentId != null
                                                                 ? `Document ${documentId}`
                                                                 : 'Document';
+                                                        const snippet =
+                                                            (evidenceText || evidenceItem?.text || '').trim() || 'View evidence';
+                                                        const shortSnippet = snippet.length > 160 ? `${snippet.slice(0, 160)}…` : snippet;
                                                         const navigatePayload = {
                                                             documentId,
                                                             startOffset: hasExactRange ? startOffset : null,
@@ -177,38 +211,55 @@ const ChecklistColumn = ({
                                                         };
                                                         return (
                                                             <li key={`${itemName}-evidence-${evidenceIndex}`} className="text-xs text-[var(--color-text-muted)]">
-                                                                <button
-                                                                    type="button"
-                                                                    disabled={!canNavigate}
-                                                                    onClick={() => {
-                                                                        if (!canNavigate) {
-                                                                            return;
-                                                                        }
-                                                                        onEvidenceNavigate(navigatePayload);
-                                                                    }}
-                                                                    className={`w-full text-left rounded px-2 py-1 transition ${
-                                                                        canNavigate
-                                                                            ? 'hover:bg-[var(--color-warning-soft)] focus:outline-none focus:ring-1 focus:ring-[var(--color-warning-soft)]'
-                                                                            : 'cursor-default text-[var(--color-text-muted)]'
-                                                                    }`}
-                                                                >
-                                                                    <span className="block italic text-[var(--color-text-secondary)]">
-                                                                        {evidenceItem?.text
-                                                                            ? `“${evidenceItem.text}”`
-                                                                            : sentenceIds.length
-                                                                                ? `Sentences ${sentenceIds.join(', ')}`
-                                                                                : 'Evidence span'}
-                                                                    </span>
-                                                                    <span className="block text-[11px] text-[var(--color-text-muted)]">
-                                                                        {resolvedLabel}
-                                                                        {offsetLabel}
-                                                                    </span>
-                                                                    {!isVerified && (
-                                                                        <span className="mt-0.5 block text-[11px] text-[var(--color-text-warning)]">
-                                                                            Location not auto-verified—opening the document so you can confirm manually.
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <div className="flex-1">
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={!canNavigate}
+                                                                            onClick={() => {
+                                                                                if (!canNavigate) {
+                                                                                    return;
+                                                                                }
+                                                                                onEvidenceNavigate(navigatePayload);
+                                                                            }}
+                                                                            className={`block text-left underline decoration-dotted ${
+                                                                                canNavigate
+                                                                                    ? 'text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]'
+                                                                                    : 'cursor-not-allowed text-[var(--color-text-muted)]'
+                                                                            }`}
+                                                                        >
+                                                                            {shortSnippet}
+                                                                        </button>
+                                                                        <span className="block text-[11px] text-[var(--color-text-secondary)]">
+                                                                            {resolvedLabel}
+                                                                        </span>
+                                                                        {!isVerified && (
+                                                                            <span className="mt-0.5 block text-[11px] text-[var(--color-text-warning)]">
+                                                                                Location not auto-verified—opening the document so you can confirm manually.
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    {evidenceText ? (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => toggleEvidence(evidenceKey)}
+                                                                            className="flex-shrink-0 rounded border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] hover:border-[var(--color-border-strong)]"
+                                                                        >
+                                                                            {isExpanded ? 'Hide evidence' : 'Show evidence'}
+                                                                        </button>
+                                                                    ) : (
+                                                                        <span className="text-[11px] text-[var(--color-text-muted)] flex-shrink-0">
+                                                                            Evidence unavailable
                                                                         </span>
                                                                     )}
-                                                                </button>
+                                                                </div>
+                                                                {isExpanded && evidenceText && (
+                                                                    <div className="mt-1 rounded border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-2 text-[11px] text-[var(--color-text-primary)]">
+                                                                        <pre className="whitespace-pre-wrap break-words font-mono leading-relaxed">
+                                                                            {evidenceText}
+                                                                        </pre>
+                                                                    </div>
+                                                                )}
                                                             </li>
                                                         );
                                                     })}
@@ -232,7 +283,8 @@ const ChecklistPanel = ({
     documentChecklistStatus = 'idle',
     onAddChecklist,
     onEvidenceNavigate,
-    resolveDocumentTitle
+    resolveDocumentTitle,
+    resolveDocumentText
 }) => {
     let documentStatusMessage = null;
     if (documentChecklistStatus === 'pending') {
@@ -262,6 +314,7 @@ const ChecklistPanel = ({
                     source="Summary Checklist"
                     onEvidenceNavigate={onEvidenceNavigate}
                     resolveDocumentTitle={resolveDocumentTitle}
+                    resolveDocumentText={resolveDocumentText}
                 />
                 <div className="flex flex-col min-h-0">
                     {documentStatusMessage && (
@@ -274,6 +327,7 @@ const ChecklistPanel = ({
                         source="Document Checklist"
                         onEvidenceNavigate={onEvidenceNavigate}
                         resolveDocumentTitle={resolveDocumentTitle}
+                        resolveDocumentText={resolveDocumentText}
                     />
                 </div>
             </div>

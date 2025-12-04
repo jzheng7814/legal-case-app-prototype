@@ -61,6 +61,10 @@ export async function fetchChecklist(caseId) {
     return request(`/cases/${caseId}/checklist`);
 }
 
+export async function fetchChecklistStatus(caseId) {
+    return request(`/cases/${caseId}/checklist/status`);
+}
+
 export async function addChecklistItem(caseId, body) {
     return request(`/cases/${caseId}/checklist/items`, {
         method: 'POST',

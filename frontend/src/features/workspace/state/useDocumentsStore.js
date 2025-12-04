@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_CASE_ID, loadDocuments as loadCaseDocuments, loadDocumentsFromPublic } from '../../../services/documentService';
+import { fetchChecklistStatus } from '../../../services/apiClient';
 
 const normaliseCaseId = (value) => {
     const trimmed = (value || '').trim();
@@ -81,54 +82,39 @@ const useDocumentsStore = ({ caseId = DEFAULT_CASE_ID, initialUploads = [] } = {
 
         let cancelled = false;
         const POLL_INTERVAL_MS = 2000;
-
         let pollTimeoutId = null;
 
-        const pollForChecklists = async () => {
+        const pollForChecklistStatus = async () => {
             try {
-                const {
-                    documents: loadedDocs,
-                    documentChecklists: prefetchedChecklists,
-                    checklistStatus
-                } = await loadCaseDocuments(currentCaseId);
+                const response = await fetchChecklistStatus(currentCaseId);
                 if (cancelled) {
                     return;
                 }
+                const checklistPayload = response?.documentChecklists ?? response?.document_checklists ?? null;
+                const status = response?.checklistStatus ?? response?.checklist_status ?? 'pending';
 
-                if (Array.isArray(loadedDocs) && loadedDocs.length) {
-                    setRemoteDocuments(loadedDocs);
-                }
-
-                if (prefetchedChecklists) {
-                    setDocumentChecklists(prefetchedChecklists);
-                    setDocumentChecklistStatus(checklistStatus ?? 'ready');
+                if (checklistPayload) {
+                    setDocumentChecklists(checklistPayload);
+                    setDocumentChecklistStatus(status || 'ready');
                     return;
                 }
 
-                if (checklistStatus && checklistStatus !== 'pending') {
-                    setDocumentChecklistStatus(checklistStatus);
+                if (status && status !== 'pending') {
+                    setDocumentChecklistStatus(status);
                     return;
                 }
             } catch (error) {
                 if (!cancelled) {
-                    console.error('Checklist polling failed', error);
+                    console.error('Checklist status polling failed', error);
                 }
             }
 
             if (!cancelled) {
-                scheduleNext();
+                pollTimeoutId = window.setTimeout(pollForChecklistStatus, POLL_INTERVAL_MS);
             }
         };
 
-        const scheduleNext = () => {
-            if (pollTimeoutId) {
-                window.clearTimeout(pollTimeoutId);
-            }
-            pollTimeoutId = window.setTimeout(pollForChecklists, POLL_INTERVAL_MS);
-        };
-
-        scheduleNext();
-        pollForChecklists();
+        pollForChecklistStatus();
 
         return () => {
             cancelled = true;
