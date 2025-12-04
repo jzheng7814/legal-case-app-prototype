@@ -12,9 +12,7 @@ const EMPTY_TOOLTIP_POSITION = { x: 0, y: 0 };
 
 const DEFAULT_CHAT_HELPERS = {
     isSelectionInContext: () => false,
-    addContextEntry: () => {},
-    removeSuggestionContext: () => {},
-    startChatAboutSuggestion: () => {}
+    addContextEntry: () => {}
 };
 
 const useHighlightStore = ({ summary, documents }) => {
@@ -26,16 +24,10 @@ const useHighlightStore = ({ summary, documents }) => {
     const [selectedDocumentRange, setSelectedDocumentRange] = useState(null);
     const [showTabTooltip, setShowTabTooltip] = useState(false);
     const [tooltipPosition, setTooltipPosition] = useState(EMPTY_TOOLTIP_POSITION);
-    const [hoveredSuggestion, setHoveredSuggestion] = useState(null);
-    const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
-    const hoverTimeoutRef = useRef(null);
-    const [highlightedContext, setHighlightedContext] = useState(null);
-    const [persistentSuggestionPopup, setPersistentSuggestionPopup] = useState(null);
     const [pendingHighlight, setPendingHighlight] = useState(null);
     const [pendingScroll, setPendingScroll] = useState(null);
     const [activeHighlight, setActiveHighlight] = useState(null);
     const [highlightRects, setHighlightRects] = useState([]);
-    const [rejectedSuggestions, setRejectedSuggestions] = useState(() => new Set());
     const cssHighlightHandleRef = useRef(null);
     const [interactionMode, setInteractionModeState] = useState('canvas');
 
@@ -211,16 +203,6 @@ const useHighlightStore = ({ summary, documents }) => {
                 window.getSelection()?.removeAllRanges();
                 clearActiveHighlight();
             }
-
-            if (
-                persistentSuggestionPopup &&
-                !event.target.closest('.suggestion-popup') &&
-                !event.target.closest('.highlighted-suggestion')
-            ) {
-                setPersistentSuggestionPopup(null);
-                setHighlightedContext(null);
-                clearActiveHighlight();
-            }
         };
 
         document.addEventListener('selectionchange', handleSelectionChange);
@@ -229,7 +211,7 @@ const useHighlightStore = ({ summary, documents }) => {
             document.removeEventListener('selectionchange', handleSelectionChange);
             document.removeEventListener('click', handleClick);
         };
-    }, [captureDocumentSelection, captureSummarySelection, clearActiveHighlight, documents.documentRef, documents.selectedDocument, interactionMode, persistentSuggestionPopup, resetSelectionState, summary.summaryRef]);
+    }, [captureDocumentSelection, captureSummarySelection, clearActiveHighlight, documents.documentRef, documents.selectedDocument, interactionMode, resetSelectionState, summary.summaryRef]);
 
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -285,156 +267,10 @@ const useHighlightStore = ({ summary, documents }) => {
         }
     }, [activeHighlight, clearActiveHighlight, documents.selectedDocument]);
 
-    const handleSuggestionHover = useCallback((event, suggestion) => {
-        if (!event?.target) {
-            return;
-        }
-        if (hoverTimeoutRef.current) {
-            clearTimeout(hoverTimeoutRef.current);
-            hoverTimeoutRef.current = null;
-        }
-        const rect = event.target.getBoundingClientRect();
-        setHoverPosition({ x: rect.left, y: rect.bottom + 5 });
-        setHoveredSuggestion(suggestion);
-    }, []);
-
-    const handleSuggestionLeave = useCallback(() => {
-        hoverTimeoutRef.current = setTimeout(() => {
-            setHoveredSuggestion(null);
-            hoverTimeoutRef.current = null;
-        }, 200);
-    }, []);
-
-    const handlePopupEnter = useCallback(() => {
-        if (hoverTimeoutRef.current) {
-            clearTimeout(hoverTimeoutRef.current);
-            hoverTimeoutRef.current = null;
-        }
-    }, []);
-
-    const handlePopupLeave = useCallback(() => {
-        setHoveredSuggestion(null);
-    }, []);
-
-    const renderSummaryWithSuggestions = useCallback((text) => {
-        if (summary.isEditMode || !text) {
-            return text;
-        }
-
-        const applicable = summary.suggestions.filter((suggestion) =>
-            suggestion.type === 'edit' &&
-            text.includes(suggestion.originalText) &&
-            !rejectedSuggestions.has(suggestion.id)
-        );
-
-        if (applicable.length === 0) {
-            return text;
-        }
-
-        let parts = text.split(/(\n)/);
-
-        applicable.forEach((suggestion) => {
-            const newParts = [];
-            parts.forEach((part, index) => {
-                if (typeof part === 'string' && part.includes(suggestion.originalText)) {
-                    const segments = part.split(suggestion.originalText);
-                    segments.forEach((segment, segmentIndex) => {
-                        if (segment) {
-                            newParts.push(segment);
-                        }
-                        if (segmentIndex < segments.length - 1) {
-                            const isHighlighted = highlightedContext?.type === 'suggestion' && highlightedContext.id === suggestion.id;
-                            newParts.push(
-                                <span
-                                    key={`suggestion-${suggestion.id}-${index}-${segmentIndex}`}
-                                    data-suggestion-id={suggestion.id}
-                                    className={`border-b-2 cursor-pointer highlighted-suggestion transition-colors hover:bg-[var(--color-highlight-strong)] ${
-                                        isHighlighted
-                                            ? 'bg-[var(--color-highlight-strong)]'
-                                            : 'bg-[var(--color-highlight-soft)]'
-                                    }`}
-                                    style={{ borderColor: 'var(--color-highlight-border)' }}
-                                    onMouseEnter={(event) => {
-                                        if (!persistentSuggestionPopup) {
-                                            handleSuggestionHover(event, suggestion);
-                                        }
-                                    }}
-                                    onMouseLeave={!persistentSuggestionPopup ? handleSuggestionLeave : undefined}
-                                >
-                                    {suggestion.originalText}
-                                </span>
-                            );
-                        }
-                    });
-                } else {
-                    newParts.push(part);
-                }
-            });
-            parts = newParts;
-        });
-
-        return parts;
-    }, [
-        handleSuggestionHover,
-        handleSuggestionLeave,
-        highlightedContext,
-        persistentSuggestionPopup,
-        rejectedSuggestions,
-        summary.isEditMode,
-        summary.suggestions
-    ]);
-
-    const applySuggestion = useCallback((suggestion) => {
-        if (!suggestion) {
-            return;
-        }
-        if (suggestion.type === 'edit') {
-            summary.setSummaryText((prev) => prev.replace(suggestion.originalText, suggestion.text));
-        }
-        setHoveredSuggestion(null);
-        chatHelpersRef.current.removeSuggestionContext(suggestion.id);
-    }, [summary]);
-
-    const rejectSuggestion = useCallback((suggestion) => {
-        if (!suggestion) {
-            return;
-        }
-        setRejectedSuggestions((prev) => new Set(prev).add(suggestion.id));
-        setHoveredSuggestion(null);
-        chatHelpersRef.current.removeSuggestionContext(suggestion.id);
-    }, []);
-
-    const startSuggestionDiscussion = useCallback((suggestion) => {
-        if (!suggestion) {
-            return;
-        }
-        chatHelpersRef.current.startChatAboutSuggestion(suggestion);
-        setHoveredSuggestion(null);
-        setPersistentSuggestionPopup(null);
-    }, []);
+    const renderSummaryWithSuggestions = useCallback((text) => text, []);
 
     const handleContextClick = useCallback((contextItem) => {
         clearActiveHighlight();
-        if (contextItem.type === 'suggestion') {
-            const suggestion = summary.suggestions.find((candidate) => candidate.id === contextItem.suggestionId);
-            if (suggestion) {
-                setHighlightedContext({ type: 'suggestion', id: suggestion.id });
-                setPersistentSuggestionPopup(suggestion);
-
-                if (suggestion.position && summary.summaryRef.current) {
-                    const range = createRangeFromOffsets(summary.summaryRef.current, suggestion.position.start, suggestion.position.end);
-                    if (range) {
-                        scrollRangeIntoView(summary.summaryRef.current, range);
-                    } else {
-                        summary.summaryRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                } else if (summary.summaryRef.current) {
-                    summary.summaryRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            }
-            return;
-        }
-
         if (contextItem.type === 'selection' && contextItem.range) {
             setPendingHighlight({ type: 'summary', range: contextItem.range, timestamp: Date.now() });
             return;
@@ -459,7 +295,7 @@ const useHighlightStore = ({ summary, documents }) => {
                 setPendingHighlight(highlightPayload);
             }
         }
-    }, [clearActiveHighlight, documents, summary.suggestions, summary.summaryRef]);
+    }, [clearActiveHighlight, documents]);
 
     const jumpToDocumentRange = useCallback(({ documentId, range }) => {
         if (!range || range.start == null || range.end == null || range.start === range.end) {
@@ -618,22 +454,9 @@ const useHighlightStore = ({ summary, documents }) => {
         selectedDocumentRange,
         showTabTooltip,
         tooltipPosition,
-        hoveredSuggestion,
-        hoverPosition,
-        highlightedContext,
-        setHighlightedContext,
-        persistentSuggestionPopup,
-        setPersistentSuggestionPopup,
         activeHighlight,
         highlightRects,
         renderSummaryWithSuggestions,
-        handleSuggestionHover,
-        handleSuggestionLeave,
-        handlePopupEnter,
-        handlePopupLeave,
-        applySuggestion,
-        rejectSuggestion,
-        startSuggestionDiscussion,
         handleContextClick,
         jumpToDocumentRange,
         clearActiveHighlight,
@@ -642,27 +465,16 @@ const useHighlightStore = ({ summary, documents }) => {
         clearSelection: resetSelectionState
     }), [
         activeHighlight,
-        applySuggestion,
         handleContextClick,
-        handlePopupEnter,
-        handlePopupLeave,
-        handleSuggestionHover,
-        handleSuggestionLeave,
         jumpToDocumentRange,
-        highlightedContext,
         highlightRects,
-        hoveredSuggestion,
-        hoverPosition,
-        persistentSuggestionPopup,
         registerChatHelpers,
         renderSummaryWithSuggestions,
-        rejectSuggestion,
         selectedDocumentRange,
         selectedDocumentText,
         selectedRange,
         selectedText,
         showTabTooltip,
-        startSuggestionDiscussion,
         tooltipPosition,
         clearActiveHighlight,
         interactionMode,

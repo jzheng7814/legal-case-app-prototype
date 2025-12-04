@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { diffWordsWithSpace } from 'diff';
-import { fetchSuggestions, getSummaryJob, startSummaryJob } from '../../../services/apiClient';
+import { getSummaryJob, startSummaryJob } from '../../../services/apiClient';
 import { DEFAULT_CASE_ID } from '../../../services/documentService';
 
 const POLL_INTERVAL_MS = 1500;
@@ -18,58 +18,6 @@ const buildDocumentPayload = (documents = []) =>
         include_full_text: true,
         content: doc.content
     }));
-
-const normaliseSuggestions = (suggestions = []) =>
-    suggestions.map((suggestion) => ({
-        ...suggestion,
-        type: suggestion.type || 'edit',
-        originalText: suggestion.originalText ?? suggestion.original_text ?? '',
-        text: suggestion.text ?? '',
-        sourceDocument: suggestion.sourceDocument ?? suggestion.source_document ?? null
-    }));
-
-const normaliseChecklistCollection = (collection) => {
-    if (!collection) {
-        return [];
-    }
-
-    const coerceEntry = (entry) => ({
-        itemName: entry?.itemName ?? entry?.item_name ?? entry?.name ?? entry?.binId ?? entry?.bin_id ?? entry?.id ?? '',
-        extraction: {
-            reasoning: entry?.extraction?.reasoning ?? entry?.result?.reasoning ?? '',
-            extracted: Array.isArray(entry?.extraction?.extracted ?? entry?.result?.extracted)
-                ? entry.extraction?.extracted ?? entry.result?.extracted
-                : []
-        }
-    });
-
-    if (Array.isArray(collection)) {
-        return collection.map(coerceEntry).filter((entry) => entry.itemName);
-    }
-
-    const bins = collection.bins ?? collection.Bins;
-    if (Array.isArray(bins)) {
-        return bins.map(coerceEntry).filter((entry) => entry.itemName);
-    }
-
-    const items = collection.items ?? collection.Items;
-    if (Array.isArray(items)) {
-        return items.map(coerceEntry).filter((entry) => entry.itemName);
-    }
-
-    if (typeof collection === 'object') {
-        return Object.entries(collection)
-            .map(([itemName, payload]) => ({
-                itemName,
-                extraction: {
-                    reasoning: payload?.reasoning ?? '',
-                    extracted: Array.isArray(payload?.extracted) ? payload.extracted : []
-                }
-            }));
-    }
-
-    return [];
-};
 
 const toPositiveInteger = (value, defaultValue = 0) => {
     const parsed = typeof value === 'number' ? value : Number.parseInt(value, 10);
@@ -232,25 +180,13 @@ const hydratePatchAction = (action) => {
     };
 };
 
-const useSummaryStore = ({
-    caseId = DEFAULT_CASE_ID,
-    prefetchedDocumentChecklists = null,
-    documentChecklistStatus: initialDocumentChecklistStatus = 'idle'
-} = {}) => {
+const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
     const [summaryText, setSummaryTextState] = useState('');
     const [isEditMode, setIsEditMode] = useState(false);
     const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
     const [summaryJobId, setSummaryJobId] = useState(null);
     const [lastSummaryError, setLastSummaryError] = useState(null);
-    const [suggestions, setSuggestions] = useState([]);
-    const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-    const [suggestionsError, setSuggestionsError] = useState(null);
     const summaryRef = useRef(null);
-    const [documentChecklists, setDocumentChecklists] = useState([]);
-    const [documentChecklistStatus, setDocumentChecklistStatus] = useState(
-        initialDocumentChecklistStatus ?? 'idle'
-    );
-    const [summaryChecklists, setSummaryChecklists] = useState([]);
     const [versionHistory, setVersionHistory] = useState([]);
     const [activeVersionId, setActiveVersionId] = useState(null);
     const [patchAction, setPatchAction] = useState(null);
@@ -261,25 +197,6 @@ const useSummaryStore = ({
     }, []);
 
     const resolvedCaseId = useMemo(() => normaliseCaseId(caseId), [caseId]);
-
-    useEffect(() => {
-        if (prefetchedDocumentChecklists != null) {
-            setDocumentChecklists(normaliseChecklistCollection(prefetchedDocumentChecklists));
-            setDocumentChecklistStatus(
-                initialDocumentChecklistStatus && initialDocumentChecklistStatus !== 'pending'
-                    ? initialDocumentChecklistStatus
-                    : 'cached'
-            );
-            return;
-        }
-
-        setDocumentChecklistStatus((currentStatus) => {
-            if (currentStatus === 'ready' && initialDocumentChecklistStatus === 'pending') {
-                return currentStatus;
-            }
-            return initialDocumentChecklistStatus ?? currentStatus;
-        });
-    }, [prefetchedDocumentChecklists, initialDocumentChecklistStatus]);
 
     const draftSummaryRef = useRef(null);
 
@@ -484,8 +401,6 @@ const useSummaryStore = ({
         const targetCaseId = normaliseCaseId(overrideCaseId ?? resolvedCaseId);
         setIsGeneratingSummary(true);
         setLastSummaryError(null);
-        setSuggestions([]);
-        setSummaryChecklists([]);
 
         try {
             const requestBody = {
@@ -511,42 +426,6 @@ const useSummaryStore = ({
         }
     }, [pollSummaryJob, resolvedCaseId, setSummaryText]);
 
-    const refreshSuggestions = useCallback(async (
-        { caseId: overrideCaseId, documents = [], maxSuggestions = 6 } = {}
-    ) => {
-        if (!summaryText.trim()) {
-            setSummaryChecklists([]);
-            setDocumentChecklistStatus('idle');
-            return [];
-        }
-
-        setIsLoadingSuggestions(true);
-        setSuggestionsError(null);
-        setDocumentChecklistStatus('pending');
-        try {
-            const response = await fetchSuggestions(normaliseCaseId(overrideCaseId ?? resolvedCaseId), {
-                summaryText,
-                documents: buildDocumentPayload(documents),
-                maxSuggestions
-            });
-            const normalisedSuggestions = normaliseSuggestions(response.suggestions);
-            const documentChecklistPayload = response.documentChecklists ?? response.document_checklists ?? [];
-            const summaryChecklistPayload = response.summaryChecklists ?? response.summary_checklists ?? [];
-            setDocumentChecklists(normaliseChecklistCollection(documentChecklistPayload));
-            setDocumentChecklistStatus('ready');
-            setSummaryChecklists(normaliseChecklistCollection(summaryChecklistPayload));
-            setSuggestions(normalisedSuggestions);
-            return normalisedSuggestions;
-        } catch (error) {
-            console.error('Failed to fetch AI suggestions', error);
-            setSuggestionsError(error);
-            setDocumentChecklistStatus('error');
-            throw error;
-        } finally {
-            setIsLoadingSuggestions(false);
-        }
-    }, [resolvedCaseId, summaryText]);
-
     const value = useMemo(() => ({
         summaryText,
         setSummaryText,
@@ -557,14 +436,7 @@ const useSummaryStore = ({
         generateAISummary,
         summaryJobId,
         lastSummaryError,
-        suggestions,
-        refreshSuggestions,
-        isLoadingSuggestions,
-        suggestionsError,
         summaryRef,
-        documentChecklists,
-        documentChecklistStatus,
-        summaryChecklists,
         versionHistory,
         activeVersionId,
         saveCurrentVersion,
@@ -583,16 +455,9 @@ const useSummaryStore = ({
         isEditMode,
         isGeneratingSummary,
         lastSummaryError,
-        refreshSuggestions,
-        suggestions,
-        suggestionsError,
         summaryJobId,
         summaryText,
         toggleEditMode,
-        isLoadingSuggestions,
-        documentChecklists,
-        documentChecklistStatus,
-        summaryChecklists,
         versionHistory,
         activeVersionId,
         saveCurrentVersion,

@@ -50,13 +50,6 @@ export async function getSummaryJob(caseId, jobId) {
     return request(`/cases/${caseId}/summary/${jobId}`);
 }
 
-export async function fetchSuggestions(caseId, body) {
-    return request(`/cases/${caseId}/suggestions`, {
-        method: 'POST',
-        body: JSON.stringify(body)
-    });
-}
-
 export async function fetchChecklist(caseId) {
     return request(`/cases/${caseId}/checklist`);
 }

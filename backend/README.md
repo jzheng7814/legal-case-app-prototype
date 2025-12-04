@@ -23,7 +23,6 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 | `GET`  | `/cases/{case_id}/documents` | Returns catalogued documents with content |
 | `POST` | `/cases/{case_id}/summary` | Starts an async summary job; returns a job id |
 | `GET`  | `/cases/{case_id}/summary/{job_id}` | Fetches job status/result |
-| `POST` | `/cases/{case_id}/suggestions` | Generates structured edit suggestions |
 | `POST` | `/chat/session` | Creates a chat session |
 | `POST` | `/chat/session/{session_id}/message` | Sends a message and returns AI + user turns |
 

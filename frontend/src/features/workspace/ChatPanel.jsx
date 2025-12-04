@@ -176,9 +176,7 @@ const ChatPanel = () => {
                             >
                                 <div className="flex-1">
                                     <span className="font-medium text-[var(--color-accent)]">
-                                        {item.type === 'suggestion' ? 'Suggestion: '
-                                            : item.type === 'document-selection' ? `${item.source}: `
-                                            : `${item.source}: `}
+                                        {item.type === 'document-selection' ? `${item.source}: ` : `${item.source || item.type}: `}
                                     </span>
                                     <span className="text-[var(--color-text-muted)]">
                                         {item.content.substring(0, 60)}...

@@ -394,22 +394,6 @@ class MockBackend(LLMBackend):
         schema: str,
         system: Optional[str] = None,
     ) -> BaseModel:
-        # Return a deterministic placeholder suggestion list.
-        if response_model.__name__ == "SuggestionGenerationPayload":
-            payload = {
-                "suggestions": [
-                    {
-                        "id": "mock-1",
-                        "type": "edit",
-                        "comment": "Replace informal phrasing with formal legal language.",
-                        "sourceDocument": "main-case",
-                        "originalText": "stuff",
-                        "text": "additional particulars",
-                        "position": {"start": 0, "end": 5},
-                    }
-                ]
-            }
-            return response_model.model_validate(payload)
         if response_model.__name__ == "ChecklistExtractionPayload":
             payload = {"reasoning": "Mock reasoning", "extracted": []}
             return response_model.model_validate(payload)

@@ -232,10 +232,6 @@ const useChatStore = ({ summary, documents, highlight }) => {
         });
     }, [chatContext]);
 
-    const removeSuggestionContext = useCallback((suggestionId) => {
-        setChatContext((previous) => previous.filter((entry) => entry.suggestionId !== suggestionId));
-    }, []);
-
     const submitMessage = useCallback(async (message, contextOverride) => {
         if (!message.trim()) {
             return;
@@ -289,23 +285,12 @@ const useChatStore = ({ summary, documents, highlight }) => {
         setCurrentMessage('');
     }, [currentMessage, isSending, submitMessage]);
 
-    const startChatAboutSuggestion = useCallback(async (suggestion) => {
-        if (!suggestion) {
-            return;
-        }
-        const suggestionContext = { type: 'suggestion', content: suggestion.comment, suggestionId: suggestion.id };
-        const combinedContext = [suggestionContext, ...chatContext];
-        await submitMessage(`Can we discuss this suggestion? "${suggestion.comment}"`, combinedContext);
-    }, [chatContext, submitMessage]);
-
     useEffect(() => {
         highlight.registerChatHelpers({
             isSelectionInContext,
-            addContextEntry,
-            removeSuggestionContext,
-            startChatAboutSuggestion
+            addContextEntry
         });
-    }, [addContextEntry, highlight, isSelectionInContext, removeSuggestionContext, startChatAboutSuggestion]);
+    }, [addContextEntry, highlight, isSelectionInContext]);
 
     const value = useMemo(() => ({
         chatMessages,

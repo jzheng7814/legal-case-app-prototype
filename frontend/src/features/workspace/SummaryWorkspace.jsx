@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import WorkspaceStateProvider from './state/WorkspaceProvider';
 import CanvasPage from './components/CanvasPage';
 import ChecklistPage from './components/ChecklistPage';
-import SuggestionPopup from './components/SuggestionPopup';
 import ThemeToggle from '../../theme/ThemeToggle';
 
 const SummaryWorkspaceView = ({ onExit }) => {
@@ -104,7 +103,6 @@ const SummaryWorkspaceView = ({ onExit }) => {
                 )}
             </div>
 
-            <SuggestionPopup />
         </div>
     );
 };

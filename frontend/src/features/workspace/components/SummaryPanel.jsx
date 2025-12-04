@@ -12,10 +12,7 @@ const SummaryPanel = () => {
         toggleEditMode,
         isGeneratingSummary,
         generateAISummary,
-        refreshSuggestions,
-        isLoadingSuggestions,
         summaryRef,
-        suggestionsError,
         versionHistory,
         activeVersionId,
         saveCurrentVersion,
@@ -47,14 +44,11 @@ const SummaryPanel = () => {
     const handleGenerateSummary = useCallback(async () => {
         setLocalError(null);
         try {
-            const generated = await generateAISummary({ caseId: activeCaseId, documents: contextDocuments });
-            if (generated) {
-                await refreshSuggestions({ caseId: activeCaseId, documents: contextDocuments });
-            }
+            await generateAISummary({ caseId: activeCaseId, documents: contextDocuments });
         } catch (error) {
             setLocalError(error.message || 'Failed to generate summary.');
         }
-    }, [activeCaseId, contextDocuments, generateAISummary, refreshSuggestions]);
+    }, [activeCaseId, contextDocuments, generateAISummary]);
 
     useEffect(() => {
         if (isEditMode || (patchAction && patchAction.isStale)) {
@@ -133,15 +127,6 @@ const SummaryPanel = () => {
         };
     }, [activePatchId, clearPatchPreview, summaryRef]);
 
-    const handleRefreshSuggestions = useCallback(async () => {
-        setLocalError(null);
-        try {
-            await refreshSuggestions({ caseId: activeCaseId, documents: contextDocuments });
-        } catch (error) {
-            setLocalError(error.message || 'Failed to refresh suggestions.');
-        }
-    }, [activeCaseId, contextDocuments, refreshSuggestions]);
-
     const handleVersionSelect = useCallback((event) => {
         selectVersion(event.target.value);
     }, [selectVersion]);
@@ -172,16 +157,6 @@ const SummaryPanel = () => {
                             >
                                 <Sparkles className="h-4 w-4 mr-1" />
                                 {isGeneratingSummary ? 'Generating...' : summaryText ? 'Regenerate with AI' : 'Generate with AI'}
-                            </button>
-                        )}
-                        {summaryText && !isEditMode && (
-                            <button
-                                onClick={handleRefreshSuggestions}
-                                disabled={isLoadingSuggestions}
-                                className="flex items-center px-3 py-1 text-sm bg-[var(--color-accent)] text-[var(--color-text-inverse)] rounded hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
-                            >
-                                <Sparkles className="h-4 w-4 mr-1" />
-                                {isLoadingSuggestions ? 'Refreshing...' : 'Refresh Suggestions'}
                             </button>
                         )}
                         <button
@@ -218,9 +193,9 @@ const SummaryPanel = () => {
                         <Plus className="h-4 w-4" />
                     </button>
                 </div>
-                {(localError || suggestionsError) && (
+                {localError && (
                     <div className="mt-2 text-xs text-[var(--color-danger)]">
-                        {localError || suggestionsError?.message}
+                        {localError}
                     </div>
                 )}
             </div>

@@ -9,11 +9,7 @@ const WorkspaceStateContext = createContext(null);
 
 export const WorkspaceStateProvider = ({ children, caseId, uploadedDocuments }) => {
     const documents = useDocumentsStore({ caseId, initialUploads: uploadedDocuments });
-    const summary = useSummaryStore({
-        caseId: documents.caseId,
-        prefetchedDocumentChecklists: documents.documentChecklists,
-        documentChecklistStatus: documents.documentChecklistStatus
-    });
+    const summary = useSummaryStore({ caseId: documents.caseId });
     const highlight = useHighlightStore({ summary, documents });
     const chat = useChatStore({ summary, documents, highlight });
     const checklist = useChecklistStore({ caseId: documents.caseId });

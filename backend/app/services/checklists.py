@@ -28,7 +28,6 @@ from app.schemas.checklists import (
     LlmEvidenceCollection,
     LlmEvidencePointer,
     ChecklistItemCreateRequest,
-    SUMMARY_DOCUMENT_ID,
 )
 from app.schemas.documents import DocumentReference
 from app.services.documents import get_document
@@ -88,7 +87,6 @@ _CHECKLIST_DB_PATH = (
 _DOCUMENT_CHECKLIST_STORE: DocumentChecklistStore = JsonDocumentChecklistStore(_CHECKLIST_DB_PATH)
 
 _MAX_DOCUMENT_CHARS = 12_000
-_MAX_SUMMARY_CHARS = 6_000
 
 
 def get_checklist_definitions() -> Dict[str, str]:
@@ -758,68 +756,3 @@ async def _run_extraction(case_id: str, tokenized_docs: List[TokenizedDocument],
             cached_value = _DOCUMENT_CACHE[signature]
 
     return _copy_collection(cached_value)
-
-
-def _build_summary_prompt(summary_text: str, tokenized_summary: List[TokenizedDocument]) -> str:
-    document_catalog_block = _build_document_catalog(tokenized_summary)
-    case_documents_block = _build_case_documents_block(tokenized_summary)
-    checklist_bins_block = _build_checklist_bins_block()
-
-    prompt = (
-        "You are extracting evidence from a draft case summary. Work through the sentences in order and return"
-        " evidence items in the same flat JSON schema used for document-driven extraction. Use the provided"
-        " document and sentence IDs exactly as shown; do not invent IDs.\n\n"
-        "# Document Catalog\n"
-        f"{document_catalog_block}\n\n"
-        "# Summary Sentences\n"
-        f"{case_documents_block}\n\n"
-        "# Evidence Bins\n"
-        f"{checklist_bins_block}\n\n"
-        "# Output Format\n"
-        "{\n"
-        '  "items": [\n'
-        "    {\n"
-        '      "binId": "<evidence bin id>",\n'
-        '      "value": "<concise finding>",\n'
-        '      "evidence": {\n'
-        '        "documentId": <integer document id>,\n'
-        '        "sentenceIds": [<integer sentence ids from that document>]\n'
-        "      }\n"
-        "    }\n"
-        "  ]\n"
-        "}\n\n"
-        "# Rules\n"
-        "1. Keep items in the order you encounter them while reading the summary.\n"
-        "2. Include every relevant bin even if no evidence is found (leave it absent rather than fabricating).\n"
-        "3. Use only the provided documentId and sentenceIds; do not quote text.\n"
-    )
-    return prompt
-
-
-async def extract_summary_checklists(summary_text: str) -> EvidenceCollection:
-    if not summary_text.strip():
-        return EvidenceCollection(items=[])
-
-    truncated, _ = _truncate_for_prompt(summary_text, _MAX_SUMMARY_CHARS)
-    payload = {
-        "id": SUMMARY_DOCUMENT_ID,
-        "title": "Summary",
-        "type": "",
-        "text": truncated,
-    }
-    tokenized_summary = [_tokenize_document(payload)]
-    prompt = _build_summary_prompt(truncated, tokenized_summary)
-
-    try:
-        response = await llm_service.generate_structured(
-            prompt,
-            response_model=LlmEvidenceCollection,
-        )
-    except Exception:  # pylint: disable=broad-except
-        logger.exception("Failed to extract evidence items from summary text")
-        raise
-
-    sentence_index = _build_sentence_index(tokenized_summary)
-    text_lookup = {SUMMARY_DOCUMENT_ID: truncated}
-    resolved = _resolve_evidence_items(response, sentence_index, text_lookup)
-    return _strip_sentence_ids_from_collection(resolved, text_lookup)

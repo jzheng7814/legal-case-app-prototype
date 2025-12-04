@@ -213,7 +213,7 @@ const ChecklistPage = ({ isActive, split = 30, onSplitChange }) => {
                     <div className="flex items-center justify-between">
                         <div>
                             <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Document Checklist</h2>
-                            <p className="text-xs text-[var(--color-text-muted)]">Review AI suggestions or add your own from document spans.</p>
+                            <p className="text-xs text-[var(--color-text-muted)]">Review extracted items or add your own from document spans.</p>
                         </div>
                         {isLoading && (
                             <span className="text-xs text-[var(--color-accent)] font-medium">Loading…</span>

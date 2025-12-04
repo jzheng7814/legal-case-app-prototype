@@ -25,7 +25,7 @@ _chat_lock = asyncio.Lock()
 
 _SYSTEM_PROMPT = (
     "You are an expert legal writing assistant supporting attorneys. "
-    "Use the supplied summary, documents, highlights, and prior suggestions as the source of truth for every answer. "
+    "Use the supplied summary, documents, and highlights as the source of truth for every answer. "
     "When the user explicitly asks you to revise, improve, or rewrite the case summary, draft a refreshed version that reflects the discussion and context. "
     "Use the commit_summary_edit function to provide the complete updated summary once it is finalized so the workspace stays in sync. "
     "After submitting the tool call, summarize the specific changes and rationale instead of re-pasting the full summary into your chat reply."
@@ -146,8 +146,6 @@ def _compose_user_content(message: str, payload: ChatMessageRequest, context: Li
             else:
                 source_label = f"Document {item.document_id}"
             context_lines.append(f"Highlight from {source_label}: {item.highlight_text}")
-        if item.summary_snippet:
-            context_lines.append(f"Prior suggestion: {item.summary_snippet}")
 
     if context_lines:
         segments.append("Context:\n" + "\n\n".join(context_lines))

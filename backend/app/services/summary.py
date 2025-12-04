@@ -40,9 +40,14 @@ async def _run_summary_job(job_id: str, case_id: str, request: SummaryRequest) -
         evidence_block = _format_evidence_block(ordered_items, doc_titles)
 
         instruction_block = request.instructions or (
-            "Produce a concise, formal legal narrative highlighting parties, claims, procedural posture, key evidence, and outcomes."
-            " Follow the chronological flow of the evidence. Do not use headers, numbered sections, bullet points, or lists."
-            " Write in clear, objective prose with short paragraphs separated by line breaks; avoid colloquialisms and first/second person."
+            "Produce a clear, formal case narrative written for an educated general audience."
+            " Keep the tone professional but avoid legalese and unnecessary jargon."
+            " Follow the chronological flow of the evidence."
+            " Write in straightforward, objective prose at approximately an 11th–12th grade reading level."
+            " Do not use headers, numbered sections, bullet points, lists, or first/second person."
+            " The style should resemble: 'The plaintiff alleges that the contractor failed to complete the work, leading to financial losses.'"
+            " Avoid styles such as: 'Plaintiff asserts breach of contractual obligations resulting in substantial pecuniary detriment.'"
+
         )
 
         prompt = (
