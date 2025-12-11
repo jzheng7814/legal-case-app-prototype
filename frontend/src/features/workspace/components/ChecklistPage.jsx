@@ -1,17 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import DocumentsPanel from '../DocumentsPanel';
 import { useChecklist, useDocuments, useHighlight } from '../state/WorkspaceProvider';
-import DividerHandle from './DividerHandle';
 
-const ChecklistPage = ({ isActive, split = 30, onSplitChange }) => {
+const ChecklistPanel = ({ isActive }) => {
     const { categories, isLoading, addItem, deleteItem } = useChecklist();
     const documents = useDocuments();
     const {
         selectedDocumentText,
         selectedDocumentRange,
         tooltipPosition,
-        setInteractionMode,
         clearSelection,
         jumpToDocumentRange
     } = useHighlight();
@@ -19,12 +16,6 @@ const ChecklistPage = ({ isActive, split = 30, onSplitChange }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [actionError, setActionError] = useState(null);
     const [expandedEvidence, setExpandedEvidence] = useState(() => new Set());
-
-    useEffect(() => {
-        if (isActive) {
-            setInteractionMode('checklist');
-        }
-    }, [isActive, setInteractionMode]);
 
     useEffect(() => {
         if (!selectedDocumentText) {
@@ -204,137 +195,123 @@ const ChecklistPage = ({ isActive, split = 30, onSplitChange }) => {
     const isChecklistReady = !effectiveLoading && sortedCategories.length > 0;
 
     return (
-        <div className="flex flex-1 overflow-hidden bg-[var(--color-surface-panel-alt)] min-w-0">
-            <div
-                className="shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface-panel)] flex flex-col overflow-hidden min-w-0"
-                style={{ flexBasis: `${split}%` }}
-            >
-                <div className="border-b border-[var(--color-border)] px-4 py-3">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Document Checklist</h2>
-                            <p className="text-xs text-[var(--color-text-muted)]">Review extracted items or add your own from document spans.</p>
-                        </div>
-                        {isLoading && (
-                            <span className="text-xs text-[var(--color-accent)] font-medium">Loading…</span>
-                        )}
+        <div className="h-full flex flex-col overflow-hidden bg-[var(--color-surface-panel)] border-r border-[var(--color-border)]">
+            <div className="border-b border-[var(--color-border)] px-4 py-3">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Document Checklist</h2>
+                        <p className="text-xs text-[var(--color-text-muted)]">Review extracted items or add your own from document spans.</p>
                     </div>
+                    {isLoading && (
+                        <span className="text-xs text-[var(--color-accent)] font-medium">Loading…</span>
+                    )}
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {!isChecklistReady ? (
-                        <div className="text-xs text-[var(--color-text-muted)]">Loading checklist…</div>
-                    ) : (
-                        sortedCategories.map((category) => (
-                            <div
-                                key={category.id}
-                                className="rounded-lg border bg-[var(--color-surface-panel)] shadow-sm"
-                                style={{ borderColor: `${category.color}33` }}
-                            >
-                                <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
-                                    <div className="flex items-center gap-2">
-                                        <span
-                                            className="h-2.5 w-2.5 rounded-full"
-                                            style={{ backgroundColor: category.color }}
-                                        />
-                                        <p className="text-sm font-semibold text-[var(--color-text-primary)]">{category.label}</p>
-                                    </div>
-                                    <span className="text-xs text-[var(--color-text-muted)]">{category.values.length} entries</span>
+                <p className="mt-2 text-[11px] text-[var(--color-text-secondary)]">
+                    Refine this checklist from document spans; generation pulls directly from here.
+                </p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[var(--color-surface-panel-alt)]">
+                {!isChecklistReady ? (
+                    <div className="text-xs text-[var(--color-text-muted)]">Loading checklist…</div>
+                ) : (
+                    sortedCategories.map((category) => (
+                        <div
+                            key={category.id}
+                            className="rounded-lg border bg-[var(--color-surface-panel)] shadow-sm"
+                            style={{ borderColor: `${category.color}33` }}
+                        >
+                            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                    <span
+                                        className="h-2.5 w-2.5 rounded-full"
+                                        style={{ backgroundColor: category.color }}
+                                    />
+                                    <p className="text-sm font-semibold text-[var(--color-text-primary)]">{category.label}</p>
                                 </div>
-                                <div className="p-3 space-y-3">
-                                    {category.values.length === 0 ? (
-                                        <p className="text-xs text-[var(--color-text-muted)]">Nothing captured yet.</p>
-                                    ) : (
-                                        category.values.map((value) => (
-                                            <div
-                                                key={value.id}
-                                                className="rounded border border-[var(--color-border)] bg-[var(--color-surface-panel-alt)] px-2 py-2"
-                                            >
-                                                {(() => {
-                                                    const evidenceText = extractEvidenceText(value);
-                                                    const canJump =
-                                                        value.documentId != null &&
-                                                        value.startOffset != null &&
-                                                        value.endOffset != null &&
-                                                        value.endOffset > value.startOffset;
-                                                    const isExpanded = expandedEvidence.has(value.id);
-                                                    const documentLabel = resolveDocumentLabel(value.documentId);
-                                                    return (
-                                                        <>
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div className="flex-1">
-                                                                    <p className="text-sm text-[var(--color-text-primary)]">
-                                                                        {value.text || value.value || '—'}
-                                                                    </p>
-                                                                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-text-muted)]">
+                                <span className="text-xs text-[var(--color-text-muted)]">{category.values.length} entries</span>
+                            </div>
+                            <div className="p-3 space-y-3">
+                                {category.values.length === 0 ? (
+                                    <p className="text-xs text-[var(--color-text-muted)]">Nothing captured yet.</p>
+                                ) : (
+                                    category.values.map((value) => (
+                                        <div
+                                            key={value.id}
+                                            className="rounded border border-[var(--color-border)] bg-[var(--color-surface-panel-alt)] px-2 py-2"
+                                        >
+                                            {(() => {
+                                                const evidenceText = extractEvidenceText(value);
+                                                const canJump =
+                                                    value.documentId != null &&
+                                                    value.startOffset != null &&
+                                                    value.endOffset != null &&
+                                                    value.endOffset > value.startOffset;
+                                                const isExpanded = expandedEvidence.has(value.id);
+                                                const documentLabel = resolveDocumentLabel(value.documentId);
+                                                return (
+                                                    <>
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="flex-1">
+                                                                <p className="text-sm text-[var(--color-text-primary)]">
+                                                                    {value.text || value.value || '—'}
+                                                                </p>
+                                                                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-text-muted)]">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => canJump && handleValueNavigate(value)}
+                                                                        disabled={!canJump}
+                                                                        className={`text-left underline decoration-dotted ${
+                                                                            canJump
+                                                                                ? 'text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]'
+                                                                                : 'cursor-not-allowed'
+                                                                        }`}
+                                                                    >
+                                                                        {documentLabel}
+                                                                    </button>
+                                                                    {evidenceText ? (
                                                                         <button
                                                                             type="button"
-                                                                            onClick={() => canJump && handleValueNavigate(value)}
-                                                                            disabled={!canJump}
-                                                                            className={`text-left underline decoration-dotted ${
-                                                                                canJump
-                                                                                    ? 'text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]'
-                                                                                    : 'cursor-not-allowed'
-                                                                            }`}
+                                                                            onClick={() => toggleEvidence(value.id)}
+                                                                            className="rounded border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] hover:border-[var(--color-border-strong)]"
                                                                         >
-                                                                            {documentLabel}
+                                                                            {isExpanded ? 'Hide evidence' : 'Show evidence'}
                                                                         </button>
-                                                                        {evidenceText ? (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => toggleEvidence(value.id)}
-                                                                                className="rounded border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] hover:border-[var(--color-border-strong)]"
-                                                                            >
-                                                                                {isExpanded ? 'Hide evidence' : 'Show evidence'}
-                                                                            </button>
-                                                                        ) : (
-                                                                            <span className="text-[11px] text-[var(--color-text-muted)]">
-                                                                                Evidence text unavailable
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
+                                                                    ) : (
+                                                                        <span className="text-[11px] text-[var(--color-text-muted)]">
+                                                                            Evidence text unavailable
+                                                                        </span>
+                                                                    )}
                                                                 </div>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleDelete(value.id)}
-                                                                    className="text-[var(--color-text-muted)] hover:text-[var(--color-danger)]"
-                                                                    title="Delete item"
-                                                                >
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                </button>
                                                             </div>
-                                                            {isExpanded && evidenceText && (
-                                                                <div className="mt-2 rounded border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-2 text-xs text-[var(--color-text-primary)]">
-                                                                    <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
-                                                                        {evidenceText}
-                                                                    </pre>
-                                                                </div>
-                                                            )}
-                                                        </>
-                                                    );
-                                                })()}
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDelete(value.id)}
+                                                                className="text-[var(--color-text-muted)] hover:text-[var(--color-danger)]"
+                                                                title="Delete item"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </button>
+                                                        </div>
+                                                        {isExpanded && evidenceText && (
+                                                            <div className="mt-2 rounded border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-2 text-xs text-[var(--color-text-primary)]">
+                                                                <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
+                                                                    {evidenceText}
+                                                                </pre>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    ))
+                                )}
                             </div>
-                        ))
-                    )}
-                    {actionError && (
-                        <div className="rounded bg-[var(--color-danger-soft)] px-3 py-2 text-xs text-[var(--color-danger)]">
-                            {actionError}
                         </div>
-                    )}
-                </div>
-            </div>
-            <DividerHandle onMouseDown={onSplitChange} />
-            <div
-                className="flex flex-1 min-h-0 min-w-0 relative"
-                style={{ flexBasis: `${100 - split}%` }}
-            >
-                <DocumentsPanel />
-                {selectionAvailable && (
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[var(--color-overlay-scrim)] px-3 py-1 text-xs text-[var(--color-text-inverse)] shadow">
-                        Select a category to capture this document span.
+                    ))
+                )}
+                {actionError && (
+                    <div className="rounded bg-[var(--color-danger-soft)] px-3 py-2 text-xs text-[var(--color-danger)]">
+                        {actionError}
                     </div>
                 )}
             </div>
@@ -343,4 +320,4 @@ const ChecklistPage = ({ isActive, split = 30, onSplitChange }) => {
     );
 };
 
-export default ChecklistPage;
+export default ChecklistPanel;

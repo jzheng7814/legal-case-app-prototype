@@ -11,7 +11,12 @@ const DocumentsPanel = () => {
         documentRef,
         getCurrentDocument
     } = useDocuments();
-    const { activeHighlight, highlightRects } = useHighlight();
+    const {
+        activeHighlight,
+        highlightRects,
+        selectedDocumentText,
+        selectedDocumentRange
+    } = useHighlight();
     const { highlightsByDocument } = useChecklist();
     const [categoryHighlights, setCategoryHighlights] = useState([]);
     const activeChecklistHighlights = useMemo(
@@ -19,6 +24,11 @@ const DocumentsPanel = () => {
         [highlightsByDocument, selectedDocument]
     );
     const currentDocumentText = getCurrentDocument() || 'No document content';
+    const selectionAvailable = Boolean(
+        selectedDocumentText &&
+        selectedDocumentRange &&
+        selectedDocument != null
+    );
 
     useEffect(() => {
         const container = documentRef.current;
@@ -58,7 +68,7 @@ const DocumentsPanel = () => {
     }, [activeChecklistHighlights, documentRef, currentDocumentText]);
 
     return (
-        <div className="flex-1 bg-[var(--color-surface-panel)] flex flex-col border-l border-[var(--color-border)] min-h-0 min-w-0">
+        <div className="flex-1 h-full min-h-0 min-w-0 bg-[var(--color-surface-panel)] flex flex-col border-l border-[var(--color-border)]">
             <div className="border-b border-[var(--color-border)] px-4 py-3">
                 <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Document Viewer</h2>
                 <p className="text-xs text-[var(--color-text-muted)]">Select spans to add checklist entries. Highlights show captured facts.</p>
@@ -97,6 +107,11 @@ const DocumentsPanel = () => {
                         <pre className="text-xs leading-relaxed font-mono whitespace-pre-wrap break-words text-[var(--color-text-primary)] min-h-full w-full">
                             {currentDocumentText}
                         </pre>
+                        {selectionAvailable && (
+                            <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[var(--color-overlay-scrim)] px-3 py-1 text-xs text-[var(--color-text-inverse)] shadow">
+                                Select a checklist category to capture this span.
+                            </div>
+                        )}
                         {categoryHighlights.map((entry) =>
                             entry.rects.map((rect, index) => (
                                 <span
