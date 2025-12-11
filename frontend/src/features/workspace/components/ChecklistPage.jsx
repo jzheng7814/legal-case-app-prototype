@@ -16,6 +16,8 @@ const ChecklistPanel = ({ isActive }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [actionError, setActionError] = useState(null);
     const [expandedEvidence, setExpandedEvidence] = useState(() => new Set());
+    const [valueInput, setValueInput] = useState('');
+    const [selectedCategoryId, setSelectedCategoryId] = useState('');
 
     useEffect(() => {
         if (!selectedDocumentText) {
@@ -30,29 +32,6 @@ const ChecklistPanel = ({ isActive }) => {
         documents.selectedDocument != null
     );
 
-    const handleCategorySelect = useCallback(async (categoryId) => {
-        if (!selectionAvailable) {
-            return;
-        }
-        setIsSubmitting(true);
-        setActionError(null);
-        try {
-            await addItem({
-                categoryId,
-                text: selectedDocumentText,
-                documentId: documents.selectedDocument,
-                startOffset: selectedDocumentRange.start,
-                endOffset: selectedDocumentRange.end
-            });
-            clearSelection();
-            setIsPickerOpen(false);
-        } catch (error) {
-            setActionError(error.message || 'Failed to add checklist item.');
-        } finally {
-            setIsSubmitting(false);
-        }
-    }, [addItem, clearSelection, documents.selectedDocument, selectedDocumentRange, selectedDocumentText, selectionAvailable]);
-
     const handleDelete = useCallback(async (valueId) => {
         if (!valueId) {
             return;
@@ -64,6 +43,12 @@ const ChecklistPanel = ({ isActive }) => {
             setActionError(error.message || 'Failed to delete checklist item.');
         }
     }, [deleteItem]);
+
+    useEffect(() => {
+        if (isPickerOpen && categories.length > 0 && !selectedCategoryId) {
+            setSelectedCategoryId(categories[0].id);
+        }
+    }, [categories, isPickerOpen, selectedCategoryId]);
 
     const documentLookup = useMemo(() => {
         const map = {};
@@ -132,59 +117,72 @@ const ChecklistPanel = ({ isActive }) => {
         });
     }, [jumpToDocumentRange]);
 
-    const renderSelectionTooltip = () => {
+    const handleOpenModal = useCallback(() => {
+        setActionError(null);
+        setValueInput('');
+        if (categories.length > 0) {
+            setSelectedCategoryId(categories[0].id);
+        }
+        setIsPickerOpen(true);
+    }, [categories]);
+
+    const handleCloseModal = useCallback(() => {
+        setIsPickerOpen(false);
+        setIsSubmitting(false);
+        setValueInput('');
+    }, []);
+
+    const handleSubmit = useCallback(async () => {
         if (!selectionAvailable) {
+            setActionError('Select text in a document to add a checklist item.');
+            return;
+        }
+        const trimmed = valueInput.trim();
+        if (!trimmed) {
+            setActionError('Checklist text is required.');
+            return;
+        }
+        if (!selectedCategoryId) {
+            setActionError('Select a checklist category.');
+            return;
+        }
+        setIsSubmitting(true);
+        setActionError(null);
+        try {
+            await addItem({
+                categoryId: selectedCategoryId,
+                text: trimmed,
+                documentId: documents.selectedDocument,
+                startOffset: selectedDocumentRange.start,
+                endOffset: selectedDocumentRange.end
+            });
+            clearSelection();
+            setIsPickerOpen(false);
+            setValueInput('');
+        } catch (error) {
+            setActionError(error.message || 'Failed to add checklist item.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    }, [addItem, clearSelection, documents.selectedDocument, selectedCategoryId, selectedDocumentRange, selectionAvailable, valueInput]);
+
+    const renderSelectionTooltip = () => {
+        if (!selectionAvailable || isPickerOpen) {
             return null;
         }
         const style = {
             left: tooltipPosition.x,
             top: tooltipPosition.y
         };
-        if (!isPickerOpen) {
-            return (
-                <button
-                    type="button"
-                    className="fixed z-50 -translate-x-1/2 rounded-full bg-[var(--color-accent)] px-3 py-1 text-xs font-semibold text-[var(--color-text-inverse)] shadow-lg hover:bg-[var(--color-accent-hover)]"
-                    style={style}
-                    onClick={() => setIsPickerOpen(true)}
-                >
-                    + Add item
-                </button>
-            );
-        }
-
         return (
-            <div
-                className="fixed z-50 -translate-x-1/2 min-w-[240px] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-3 shadow-lg"
+            <button
+                type="button"
+                className="fixed z-50 -translate-x-1/2 rounded-full bg-[var(--color-accent)] px-3 py-1 text-xs font-semibold text-[var(--color-text-inverse)] shadow-lg hover:bg-[var(--color-accent-hover)]"
                 style={style}
+                onClick={handleOpenModal}
             >
-                <p className="text-xs font-semibold text-[var(--color-text-secondary)] mb-2">Assign to checklist category</p>
-                <div className="grid grid-cols-2 gap-2">
-                    {categories.map((category) => (
-                        <button
-                            key={category.id}
-                            type="button"
-                            disabled={isSubmitting}
-                            onClick={() => handleCategorySelect(category.id)}
-                            className="flex items-center gap-2 rounded border border-[var(--color-border)] px-2 py-1.5 text-xs font-medium text-[var(--color-text-secondary)] hover:border-[var(--color-border-strong)] disabled:opacity-50"
-                        >
-                            <span
-                                className="h-2.5 w-2.5 rounded-full"
-                                style={{ backgroundColor: category.color }}
-                            />
-                            {category.label}
-                        </button>
-                    ))}
-                </div>
-                <button
-                    type="button"
-                    className="mt-2 w-full rounded border border-[var(--color-border)] bg-[var(--color-surface-panel-alt)] py-1 text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]"
-                    onClick={() => setIsPickerOpen(false)}
-                    disabled={isSubmitting}
-                >
-                    Cancel
-                </button>
-            </div>
+                + Add item
+            </button>
         );
     };
 
@@ -312,6 +310,85 @@ const ChecklistPanel = ({ isActive }) => {
                 {actionError && (
                     <div className="rounded bg-[var(--color-danger-soft)] px-3 py-2 text-xs text-[var(--color-danger)]">
                         {actionError}
+                    </div>
+                )}
+                {isPickerOpen && selectionAvailable && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-overlay-scrim)] px-4">
+                        <div className="w-full max-w-xl rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-2xl">
+                            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
+                                <div>
+                                    <p className="text-sm font-semibold text-[var(--color-text-primary)]">Add checklist item</p>
+                                    <p className="text-[11px] text-[var(--color-text-muted)]">Review the highlighted span and add your value.</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleCloseModal}
+                                    className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                                    disabled={isSubmitting}
+                                >
+                                    Close
+                                </button>
+                            </div>
+                            <div className="px-4 py-3 space-y-3">
+                                <div>
+                                    <p className="text-xs font-semibold text-[var(--color-text-secondary)] mb-1">Selected text</p>
+                                    <div className="max-h-32 overflow-y-auto rounded border border-[var(--color-border)] bg-[var(--color-surface-panel-alt)] p-2 text-xs text-[var(--color-text-primary)]">
+                                        <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
+                                            {selectedDocumentText}
+                                        </pre>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-[var(--color-text-secondary)] mb-1 block" htmlFor="checklist-category">
+                                        Checklist category
+                                    </label>
+                                    <select
+                                        id="checklist-category"
+                                        value={selectedCategoryId}
+                                        onChange={(event) => setSelectedCategoryId(event.target.value)}
+                                        className="w-full rounded border border-[var(--color-input-border)] bg-[var(--color-input-bg)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                                        disabled={isSubmitting}
+                                    >
+                                        {sortedCategories.map((category) => (
+                                            <option key={category.id} value={category.id}>
+                                                {category.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-[var(--color-text-secondary)] mb-1 block" htmlFor="checklist-value">
+                                        Checklist value
+                                    </label>
+                                    <textarea
+                                        id="checklist-value"
+                                        value={valueInput}
+                                        onChange={(event) => setValueInput(event.target.value)}
+                                        className="w-full min-h-[100px] rounded border border-[var(--color-input-border)] bg-[var(--color-input-bg)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                                        placeholder="Describe the item in your own words…"
+                                        disabled={isSubmitting}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-end gap-2 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-alt)] px-4 py-3">
+                                <button
+                                    type="button"
+                                    onClick={handleCloseModal}
+                                    className="rounded border border-[var(--color-border)] px-3 py-1.5 text-sm text-[var(--color-text-secondary)] hover:border-[var(--color-border-strong)] disabled:opacity-50"
+                                    disabled={isSubmitting}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSubmit}
+                                    className="rounded bg-[var(--color-accent)] px-3 py-1.5 text-sm font-semibold text-[var(--color-text-inverse)] shadow hover:bg-[var(--color-accent-hover)] disabled:opacity-60"
+                                    disabled={isSubmitting}
+                                >
+                                    {isSubmitting ? 'Saving…' : 'Save to checklist'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
