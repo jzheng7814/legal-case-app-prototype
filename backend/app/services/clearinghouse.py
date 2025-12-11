@@ -86,7 +86,7 @@ class ClearinghouseClient:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
 
-    def fetch_case_documents(self, case_id: str) -> List[Document]:
+    def fetch_case_documents(self, case_id: str) -> tuple[List[Document], Optional[str]]:
         """Return all documents (including docket) for the supplied case identifier."""
         case_detail = self._fetch_case(case_id)
         case_title = case_detail.get("name") if case_detail else None
@@ -126,7 +126,7 @@ class ClearinghouseClient:
 
         if not documents:
             raise ClearinghouseError(f"No documents were returned for case {case_id}.")
-        return documents
+        return documents, case_title
 
     def _headers(self) -> Dict[str, str]:
         return {

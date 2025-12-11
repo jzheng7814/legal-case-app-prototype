@@ -38,6 +38,17 @@
     ]
   },
   {
+    "id": "legal_reasoning",
+    "label": "Legal Reasoning and Arguments",
+    "color": "#0EA5E9",
+    "members": [
+      "Issues_Decided",
+      "Court_and_Party_Reasoning",
+      "Dissent_or_Separate_Views",
+      "Key_Rule_or_Test_Statements"
+    ]
+  },
+  {
     "id": "filings_proceedings",
     "label": "Filings and Proceedings",
     "color": "#EF4444",

@@ -16,6 +16,7 @@ class StoredCaseDocuments:
     """Container for cached Clearinghouse documents."""
 
     documents: List[Dict[str, Any]]
+    case_title: str
     stored_at: Optional[str] = None
 
 
@@ -25,7 +26,7 @@ class CaseDocumentStore(Protocol):
     def get(self, case_id: str) -> Optional[StoredCaseDocuments]:
         """Return the stored documents for a case."""
 
-    def set(self, case_id: str, documents: List[Dict[str, Any]]) -> None:
+    def set(self, case_id: str, documents: List[Dict[str, Any]], case_title: str) -> None:
         """Persist the supplied documents for a case."""
 
     def clear(self, case_id: str) -> None:
@@ -48,15 +49,26 @@ class JsonCaseDocumentStore(CaseDocumentStore):
         if not isinstance(raw_entry, dict):
             return None
         documents = raw_entry.get("documents")
+        case_title = raw_entry.get("case_title")
         stored_at = raw_entry.get("stored_at")
         if not isinstance(documents, list):
             logger.debug("Cached document entry for case %s missing documents list.", key)
             return None
-        return StoredCaseDocuments(documents=documents, stored_at=stored_at if isinstance(stored_at, str) else None)
+        if not isinstance(case_title, str) or not case_title.strip():
+            logger.debug("Cached document entry for case %s missing case title.", key)
+            return None
+        return StoredCaseDocuments(
+            documents=documents,
+            case_title=case_title.strip(),
+            stored_at=stored_at if isinstance(stored_at, str) else None,
+        )
 
-    def set(self, case_id: str, documents: List[Dict[str, Any]]) -> None:
+    def set(self, case_id: str, documents: List[Dict[str, Any]], case_title: str) -> None:
+        if not isinstance(case_title, str) or not case_title.strip():
+            raise ValueError("case_title is required when caching case documents.")
         record = {
             "documents": documents,
+            "case_title": case_title.strip(),
             "stored_at": datetime.now(timezone.utc).isoformat(),
         }
         key = _normalize_case_id(case_id)

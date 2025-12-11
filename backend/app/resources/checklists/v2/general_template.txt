@@ -1,5 +1,8 @@
 You are assisting a lawyer in extracting key information from legal case documents. Read the documents in the order shown (docket first, then ECF order) and maintain a running case state as you progress. Use sentence IDs to cite evidence—do not return text snippets or character offsets.
 
+Case being analyzed: {case_name}
+Do not list this case itself as a related or consolidated case.
+
 # Document Catalog
 Documents are already ordered chronologically. Use only the documents listed here.
 

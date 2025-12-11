@@ -29,6 +29,7 @@ _CASE_STORE_PATH = Path(__file__).resolve().parents[1] / "data" / "flat_db" / "c
 _CASE_STORE: CaseDocumentStore = JsonCaseDocumentStore(_CASE_STORE_PATH)
 
 _CASE_CACHE: Dict[str, List[Document]] = {}
+_CASE_TITLE_CACHE: Dict[str, str] = {}
 _CASE_CACHE_LOCK = RLock()
 
 
@@ -44,14 +45,19 @@ def _load_catalog() -> Dict[str, Any]:
 def list_documents(case_id: str) -> List[Document]:
     normalized = _normalize_case_id(case_id)
 
-    catalog_documents = _load_catalog_documents(normalized)
-    if catalog_documents is not None:
+    catalog_payload = _load_catalog_documents(normalized)
+    if catalog_payload is not None:
+        catalog_documents, case_title = catalog_payload
         ordered = _sort_documents(catalog_documents)
-        _remember_documents(normalized, ordered)
+        _remember_documents(normalized, ordered, case_title)
+        try:
+            _CASE_STORE.set(normalized, [doc.model_dump(mode="json") for doc in ordered], case_title)
+        except Exception:  # pylint: disable=broad-except
+            logger.exception("Failed to persist catalog documents for case %s.", normalized)
         return _clone_documents(ordered)
 
     try:
-        documents = _fetch_remote_documents(normalized)
+        documents, case_title = _fetch_remote_documents(normalized)
     except ClearinghouseNotConfigured as exc:
         logger.warning("Clearinghouse API key not configured; cannot fetch case %s.", normalized)
         cached = _get_cached_documents(normalized)
@@ -75,6 +81,7 @@ def list_documents(case_id: str) -> List[Document]:
         ) from exc
 
     ordered = _sort_documents(documents)
+    _remember_documents(normalized, ordered, case_title)
     return _clone_documents(ordered)
 
 
@@ -115,13 +122,43 @@ def get_document_metadata(case_id: str) -> List[DocumentMetadata]:
     ]
 
 
-def _load_catalog_documents(case_id: str) -> Optional[List[Document]]:
+def get_case_title(case_id: str) -> Optional[str]:
+    """Return the cached case title if available."""
+    normalized = _normalize_case_id(case_id)
+    with _CASE_CACHE_LOCK:
+        cached = _CASE_TITLE_CACHE.get(normalized)
+        if cached:
+            return cached
+
+    stored = _CASE_STORE.get(normalized)
+    if stored is None:
+        return None
+
+    title = stored.case_title
+    with _CASE_CACHE_LOCK:
+        _CASE_TITLE_CACHE[normalized] = title
+    return title
+
+
+def _require_case_title(source: Optional[str], documents: Iterable[Document]) -> str:
+    if isinstance(source, str) and source.strip():
+        return source.strip()
+    for doc in documents:
+        if isinstance(doc.description, str) and doc.description.strip():
+            return doc.description.strip()
+        if isinstance(doc.title, str) and doc.title.strip():
+            return doc.title.strip()
+    raise HTTPException(status_code=500, detail="Case title could not be determined from the provided documents.")
+
+
+def _load_catalog_documents(case_id: str) -> Optional[tuple[List[Document], str]]:
     catalog = _load_catalog()
     case_entry = catalog.get("cases", {}).get(case_id)
     if not case_entry:
         return None
 
     documents: List[Document] = []
+    case_title = case_entry.get("title")
     for item in case_entry.get("documents", []):
         content = _load_document_text(item["filename"])
         try:
@@ -138,18 +175,19 @@ def _load_catalog_documents(case_id: str) -> Optional[List[Document]]:
                 content=content,
             )
         )
-    return documents
+    resolved_title = _require_case_title(case_title, documents)
+    return documents, resolved_title
 
 
-def _fetch_remote_documents(case_id: str) -> List[Document]:
+def _fetch_remote_documents(case_id: str) -> tuple[List[Document], str]:
     client = _get_clearinghouse_client()
-    documents = client.fetch_case_documents(case_id)
-    _remember_documents(case_id, documents)
+    documents, case_title = client.fetch_case_documents(case_id)
+    resolved_title = _require_case_title(case_title, documents)
     try:
-        _CASE_STORE.set(case_id, [doc.model_dump(mode="json") for doc in documents])
+        _CASE_STORE.set(case_id, [doc.model_dump(mode="json") for doc in documents], resolved_title)
     except Exception:  # pylint: disable=broad-except
         logger.exception("Failed to persist Clearinghouse documents for case %s.", case_id)
-    return documents
+    return documents, resolved_title
 
 
 @lru_cache
@@ -168,15 +206,20 @@ def _load_document_text(filename: str) -> str:
         return infile.read()
 
 
-def _remember_documents(case_id: str, documents: Iterable[Document]) -> None:
+def _remember_documents(case_id: str, documents: Iterable[Document], case_title: str) -> None:
     with _CASE_CACHE_LOCK:
         _CASE_CACHE[case_id] = _clone_documents(list(documents))
+        _CASE_TITLE_CACHE[case_id] = case_title
 
 
 def _get_cached_documents(case_id: str) -> Optional[List[Document]]:
     with _CASE_CACHE_LOCK:
         cached = _CASE_CACHE.get(case_id)
+        cached_title = _CASE_TITLE_CACHE.get(case_id)
     if cached is not None:
+        if cached_title:
+            with _CASE_CACHE_LOCK:
+                _CASE_TITLE_CACHE[case_id] = cached_title
         return _clone_documents(cached)
 
     stored = _CASE_STORE.get(case_id)
@@ -198,7 +241,7 @@ def _get_cached_documents(case_id: str) -> Optional[List[Document]]:
             item = working
         documents.append(Document.model_validate(item))
     ordered = _sort_documents(documents)
-    _remember_documents(case_id, ordered)
+    _remember_documents(case_id, ordered, stored.case_title)
     return _clone_documents(ordered)
 
 

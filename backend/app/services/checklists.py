@@ -30,7 +30,7 @@ from app.schemas.checklists import (
     ChecklistItemCreateRequest,
 )
 from app.schemas.documents import DocumentReference
-from app.services.documents import get_document
+from app.services.documents import get_case_title, get_document
 from app.services.llm import llm_service
 
 logger = logging.getLogger(__name__)
@@ -280,10 +280,11 @@ def _build_document_catalog(documents: List[TokenizedDocument]) -> str:
     return "\n".join(lines) if lines else "No documents were supplied."
 
 
-def _compute_documents_signature(case_id: str, documents: List[TokenizedDocument]) -> str:
+def _compute_documents_signature(case_id: str, documents: List[TokenizedDocument], case_name: str) -> str:
     digest = hashlib.sha256()
     digest.update(case_id.encode("utf-8"))
     digest.update(_CHECKLIST_VERSION.encode("utf-8"))
+    digest.update(case_name.encode("utf-8"))
     for doc in documents:
         digest.update(str(doc.document_id).encode("utf-8"))
         digest.update(doc.title.encode("utf-8"))
@@ -292,17 +293,37 @@ def _compute_documents_signature(case_id: str, documents: List[TokenizedDocument
     return digest.hexdigest()
 
 
+def _clean_case_name(raw_value: Optional[str]) -> Optional[str]:
+    if not isinstance(raw_value, str):
+        return None
+    cleaned = " ".join(raw_value.split()).strip()
+    return cleaned or None
+
+
+def _resolve_case_name(case_id: str, documents: List[DocumentReference]) -> str:
+    cached = _clean_case_name(get_case_title(case_id))
+    if cached:
+        return cached
+
+    for ref in documents:
+        fallback = _clean_case_name(ref.title) or _clean_case_name(ref.alias)
+        if fallback:
+            return fallback
+
+    raise HTTPException(status_code=500, detail="Case title unavailable for checklist extraction.")
+
+
 def _copy_collection(collection: EvidenceCollection) -> EvidenceCollection:
     return collection.model_copy(deep=True)
 
 
 async def _resolve_cached_collection(
-    case_id: str, documents: List[DocumentReference]
+    case_id: str, documents: List[DocumentReference], case_name: str
 ) -> tuple[EvidenceCollection | None, List[TokenizedDocument], str]:
     sorted_docs = sorted(documents, key=_document_sort_key)
     payloads = _resolve_document_payloads(case_id, sorted_docs)
     tokenized = [_tokenize_document(payload) for payload in payloads]
-    signature = _compute_documents_signature(case_id, tokenized)
+    signature = _compute_documents_signature(case_id, tokenized, case_name)
     text_lookup = {doc.document_id: doc.text for doc in tokenized}
 
     async with _DOCUMENT_CACHE_LOCK:
@@ -331,7 +352,8 @@ async def _resolve_cached_collection(
 async def get_document_checklists_if_cached(
     case_id: str, documents: List[DocumentReference]
 ) -> EvidenceCollection | None:
-    cached, tokenized, _ = await _resolve_cached_collection(case_id, documents)
+    case_name = _resolve_case_name(case_id, documents)
+    cached, tokenized, _ = await _resolve_cached_collection(case_id, documents, case_name)
     if cached is None:
         return None
     text_lookup = {doc.document_id: doc.text for doc in tokenized}
@@ -696,7 +718,8 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
     if not documents:
         return EvidenceCollection(items=[])
 
-    cached, tokenized_docs, signature = await _resolve_cached_collection(case_id, documents)
+    case_name = _resolve_case_name(case_id, documents)
+    cached, tokenized_docs, signature = await _resolve_cached_collection(case_id, documents, case_name)
     if cached is not None:
         logger.debug("Checklist extraction cache hit for signature %s", signature)
         return cached
@@ -704,7 +727,7 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
     async with _IN_FLIGHT_LOCK:
         task = _IN_FLIGHT_EXTRACTIONS.get(signature)
         if task is None or task.done():
-            task = asyncio.create_task(_run_extraction(case_id, tokenized_docs, signature))
+            task = asyncio.create_task(_run_extraction(case_id, tokenized_docs, signature, case_name))
             _IN_FLIGHT_EXTRACTIONS[signature] = task
 
     try:
@@ -719,13 +742,16 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
     return _copy_collection(result)
 
 
-async def _run_extraction(case_id: str, tokenized_docs: List[TokenizedDocument], signature: str) -> EvidenceCollection:
+async def _run_extraction(
+    case_id: str, tokenized_docs: List[TokenizedDocument], signature: str, case_name: str
+) -> EvidenceCollection:
     case_documents_block = _build_case_documents_block(tokenized_docs)
     document_catalog_block = _build_document_catalog(tokenized_docs)
     checklist_bins_block = _build_checklist_bins_block()
 
     prompt = (
-        _DOCUMENT_PROMPT_TEMPLATE.replace("{document_catalog}", document_catalog_block)
+        _DOCUMENT_PROMPT_TEMPLATE.replace("{case_name}", case_name)
+        .replace("{document_catalog}", document_catalog_block)
         .replace("{case_documents}", case_documents_block)
         .replace("{checklist_bins}", checklist_bins_block)
     )
