@@ -68,9 +68,10 @@ async def _run_summary_job(job_id: str, case_id: str, request: SummaryRequest) -
             "Produce a clear, formal case narrative written for an educated general audience. "
             "Keep the tone professional but avoid legalese and unnecessary jargon. "
             "Follow the chronological flow of the evidence. "
-            "Write in straightforward, objective prose at approximately an 11th-12th grade reading level. "
+            "Write in straightforward, objective prose at approximately the reading level of a university student. "
             "Do not use headers, numbered sections, bullet points, lists, or first/second person. "
-            "Open with the dispute frame in one sentence; then procedural posture; then factual allegations; then motions/resolutions; close with disposition/status."
+            "Do not add a concluding paragraph to the end which runs through all of the events from the start. Narrate the case strictly from beginning to end. "
+            "Finish with one concise line describing the current state of the case (e.g. This case is <closed/ongoing/etc>.)"
         )
 
         style_guidance = (

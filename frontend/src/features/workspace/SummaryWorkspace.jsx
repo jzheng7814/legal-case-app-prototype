@@ -16,7 +16,7 @@ const MAX_SPLIT = 85;
 const SummaryWorkspaceView = ({ onExit }) => {
     const [visiblePanes, setVisiblePanes] = useState({
         checklist: true,
-        summary: false,
+        summary: true,
         documents: true
     });
     const [pairSplits, setPairSplits] = useState({

@@ -56,6 +56,12 @@ def list_documents(case_id: str) -> List[Document]:
             logger.exception("Failed to persist catalog documents for case %s.", normalized)
         return _clone_documents(ordered)
 
+    cached = _get_cached_documents(normalized)
+    if cached is not None:
+        logger.info("Serving cached documents for case %s", normalized)
+        return cached
+
+    logger.info("Fetching documents from Clearinghouse for case %s", normalized)
     try:
         documents, case_title = _fetch_remote_documents(normalized)
     except ClearinghouseNotConfigured as exc:
