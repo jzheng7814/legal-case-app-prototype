@@ -745,40 +745,24 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
 async def _run_extraction(
     case_id: str, tokenized_docs: List[TokenizedDocument], signature: str, case_name: str
 ) -> EvidenceCollection:
-    case_documents_block = _build_case_documents_block(tokenized_docs)
-    document_catalog_block = _build_document_catalog(tokenized_docs)
-    checklist_bins_block = _build_checklist_bins_block()
-
-    prompt = (
-        _DOCUMENT_PROMPT_TEMPLATE.replace("{case_name}", case_name)
-        .replace("{document_catalog}", document_catalog_block)
-        .replace("{case_documents}", case_documents_block)
-        .replace("{checklist_bins}", checklist_bins_block)
-    )
+    # Use the Agentic Worker for extraction
+    from app.services.agent.driver import run_extraction_agent
 
     try:
-        raw_response = await llm_service.generate_structured(
-            prompt,
-            response_model=LlmEvidenceCollection,
-        )
-    except Exception:  # pylint: disable=broad-except
-        logger.exception("Failed to extract evidence items for case %s", case_id)
+        # Run the agent
+        # Note: The agent will access documents via the documents service using case_id
+        # We don't pass tokenized_docs explicitly as the agent handles its own reading strategy
+        result = await run_extraction_agent(case_id)
+        
+        # Persist results
+        _DOCUMENT_CHECKLIST_STORE.set(case_id, signature=signature, items=result)
+        
+        # Update cache
+        async with _DOCUMENT_CACHE_LOCK:
+            _DOCUMENT_CACHE[signature] = _copy_collection(result)
+            
+        return _copy_collection(result)
+        
+    except Exception:
+        logger.exception("Agent extraction failed for case %s", case_id)
         raise
-
-    sentence_index = _build_sentence_index(tokenized_docs)
-    text_lookup = {doc.document_id: doc.text for doc in tokenized_docs}
-    resolved = _resolve_evidence_items(raw_response, sentence_index, text_lookup)
-    sanitized = _strip_sentence_ids_from_collection(resolved, text_lookup)
-
-    try:
-        _DOCUMENT_CHECKLIST_STORE.set(case_id, signature=signature, items=sanitized)
-    except Exception:  # pylint: disable=broad-except
-        logger.exception("Failed to persist checklist results for case %s", case_id)
-
-    async with _DOCUMENT_CACHE_LOCK:
-        cached_value = _DOCUMENT_CACHE.get(signature)
-        if cached_value is None:
-            _DOCUMENT_CACHE[signature] = _copy_collection(sanitized)
-            cached_value = _DOCUMENT_CACHE[signature]
-
-    return _copy_collection(cached_value)
