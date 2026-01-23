@@ -219,7 +219,11 @@ No documents discovered yet."""
         for action in recent_actions:
             lines.append(f"Step {action.step}. `{action.tool}`")
             if action.error:
+                 # Highlight validation errors prominently
                 lines.append(f"   **❌ ERROR**: {action.error}")
+                if action.validation_errors:
+                    for ve in action.validation_errors:
+                         lines.append(f"      - {ve}")
             elif action.result_summary:
                 # Simple summary
                 lines.append(f"   Result: {json.dumps(action.result_summary, default=str)[:200]}...") # Truncated

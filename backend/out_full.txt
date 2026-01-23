@@ -1,0 +1,2116 @@
+Initializing 
+ClearinghouseClient for 
+Case 46094...
+
+1. Fetching Case Metadata
+(_fetch_case)...
+{                        
+  "attorney_orgs": [],   
+  "available_documents": 
+    "Trial Court Docket",
+    "Complaint (any)",   
+    "Any published opinio
+  ],                     
+  "case_defendants": [   
+    {                    
+      "defendant_level": 
+      "institution": "", 
+      "institution_alt_st
+      "institution_city":
+      "institution_county
+      "name": "U.S. Depar
+      "defendant_level_ot
+      "is_active": true  
+    },                   
+    {                    
+      "defendant_level": 
+      "institution": "", 
+      "institution_alt_st
+      "institution_city":
+      "institution_county
+      "name": "White Hous
+      "defendant_level_ot
+      "is_active": true  
+    },                   
+    {                    
+      "defendant_level": 
+      "institution": "", 
+      "institution_alt_st
+      "institution_city":
+      "institution_county
+      "name": "U.S. Offic
+      "defendant_level_ot
+      "is_active": true  
+    },                   
+    {                    
+      "defendant_level": 
+      "institution": "", 
+      "institution_alt_st
+      "institution_city":
+      "institution_county
+      "name": "President 
+      "defendant_level_ot
+      "is_active": true  
+    },                   
+    {                    
+      "defendant_level": 
+      "institution": "", 
+      "institution_alt_st
+      "institution_city":
+      "institution_county
+      "name": "U.S. Offic
+      "defendant_level_ot
+      "is_active": true  
+    }                    
+  ],                     
+  "case_ongoing": "No",  
+  "case_status": "Approve
+  "case_types": [        
+    "Presidential/Guberna
+  ],                     
+  "cause_other": "",     
+  "causes": [            
+    "Administrative Proce
+    "Declaratory Judgment
+    "Mandamus, 28 U.S.C. 
+  ],                     
+  "class_action_granted":
+  "class_action_sought": 
+  "closing_year": 2025,  
+  "constitutional_clause"
+    {                    
+      "value": "Separatio
+    }                    
+  ],                     
+  "content_of_injunction"
+    {                    
+      "value": "Prelimina
+    },                   
+    {                    
+      "value": "Position 
+    },                   
+    {                    
+      "value": "Reinstate
+    }                    
+  ],                     
+  "court": "District of D
+  "custom_issues": [],   
+  "defendant_payment": ""
+  "defendant_type": [    
+    {                    
+      "value": "Jurisdict
+    }                    
+  ],                     
+  "docket_status": "Compl
+  "facility_type": [],   
+  "filing_date": "2025-02
+  "filing_year": 2025,   
+  "id": 46094,           
+  "injunction_duration": 
+  "issues": [            
+    "Presidential/Guberna
+    "Presidential/Guberna
+  ],                     
+  "last_checked_date": "2
+  "name": "Dellinger v. B
+  "never_filed": false,  
+  "non_docket_case_number
+  "non_docket_case_number
+  "non_docket_case_number
+  "order_end_year": null,
+  "order_start_year": nul
+  "permanent_injunction":
+  "plaintiff_description"
+  "plaintiff_type": [    
+    {                    
+      "value": "Private P
+    }                    
+  ],                     
+  "prevailing_party": "Pl
+  "pro_se_status": "No", 
+  "public_interest_lawyer
+  "related_cases": [],   
+  "relief_natures": [    
+    "Injunction / Injunct
+    "Preliminary injuncti
+    "Declaratory Judgment
+  ],                     
+  "relief_nature_other": 
+  "relief_sources": [    
+    "Litigation"         
+  ],                     
+  "settlement_agreement":
+  "settlement_judgment_da
+  "settlement_judgment_ye
+  "special_collections": 
+    "Trump Administration
+    "Trump Administration
+  ],                     
+  "special_case_type": []
+  "state": "District of C
+  "summary": "<p>This cas
+  "summary_published_date
+  "summary_short": "On Fe
+  "summary_tiny": null,  
+  "terminating_date": "20
+  "clearinghouse_link": "
+  "is_active": true,     
+  "case_documents_url": "
+  "case_dockets_url": "ht
+  "case_resources_url": "
+}                        
+
+2. Fetching Documents 
+(_fetch_documents)...
+Found 10 documents.
+Doc 160621: Certificate 
+of Service 
+(has_text=True)
+   Fetching text from: 
+https://clearinghouse.net
+/api/v2p1/documents/16062
+1/text/
+   Content Preview: {   
+"id": 160621,   "text": 
+"No. 24A-790 \nIn the 
+Supreme Court of the 
+United States \nSCOTT 
+BESSENT,  \nSecretary of 
+the Treasury, et al.,  
+\nApplicants \nv. 
+\nHAMPTON DELLINGER, 
+\nRespondent 
+\nCERTIFICATE OF SERVICE 
+\nI hereby certify that I
+am a member in good 
+standing of the bar of 
+\nthis Court and that on 
+this 19th day of February
+2025, I caused a copy of 
+\nthe foregoing Brief of 
+Amici Curiae State of 
+Florida and 19 Other 
+States \nin  Support  of 
+the  Secretary\u2019s  
+Application  to  Vac...
+Doc 160620: Brief of 
+Amici Curiae Florida and 
+19 Other States in 
+Support of the 
+Secretary's Application 
+to Vacate the Order of 
+the United States 
+District Court 
+(has_text=True)
+   Fetching text from: 
+https://clearinghouse.net
+/api/v2p1/documents/16062
+0/text/
+   Content Preview: {   
+"id": 160620,   "text": 
+"No. 24A-790 \nIn the 
+Supreme Court of the 
+United States \nSCOTT 
+BESSENT, Secretary of the
+Treasury, et al.,  
+\nApplicants, \nv. 
+\nHAMPTON DELLINGER, 
+\nRespondent. \nBRIEF OF 
+AMICI CURIAE FLORIDA AND 
+19 OTHER \nSTATES IN 
+SUPPORT OF THE 
+SECRETARY\u2019S 
+\nAPPLICATION TO VACATE 
+THE ORDER OF THE \nUNITED
+STATES DISTRICT COURT \n 
+\n  JAMES UTHMEIER  \n  
+Attorney General of 
+Florida \n   \n  JEFFREY 
+PAUL DESOUSA  \n  Acting 
+Solicitor General \n  
+NATHAN A. FORRESTER \n  
+DAVI...
+Doc 158603: Order 
+(has_text=True)
+   Fetching text from: 
+https://clearinghouse.net
+/api/v2p1/documents/15860
+3/text/
+   Content Preview: {   
+"id": 158603,   "text": 
+"USCA Case #25-5052      
+Document #2107965        
+Filed: 03/27/2025      
+Page 1 of 2\nUnited 
+States Court of 
+Appeals\nFOR THE DISTRICT
+OF COLUMBIA 
+CIRCUIT\n____________\nNo
+. 25-5052 September Term,
+2024\n1:25-cv-00385-ABJ\n
+Filed On:  March 27, 2025
+\nHampton Dellinger, in 
+his personal 
+capacity\nand in his 
+official capacity as 
+Special Counsel\nof the 
+Office of Special 
+Counsel,\nAppellee\nv.\nS
+cott Bessent, in his 
+official capacity 
+as\nSecretary of the 
+Treasury, et ...
+Doc 157005: Per Curiam 
+Order Filed (Special 
+Panel) (has_text=True)
+   Fetching text from: 
+https://clearinghouse.net
+/api/v2p1/documents/15700
+5/text/
+   Content Preview: {   
+"id": 157005,   "text": 
+"USCA Case #25-5052      
+Document #2105393        
+Filed: 03/12/2025      
+Page 1 of 1\nUnited 
+States Court of 
+Appeals\nFOR THE DISTRICT
+OF COLUMBIA 
+CIRCUIT\n____________\nNo
+. 25-5052 September Term,
+2024\n1:25-cv-00385-ABJ\n
+Filed On:  March 12, 2025
+\nHampton Dellinger, in 
+his personal 
+capacity\nand in his 
+official capacity as 
+Special Counsel\nof the 
+Office of Special 
+Counsel,\nAppellee\nv.\nS
+cott Bessent, in his 
+official capacity 
+as\nSecretary of the 
+Treasury, et ...
+Doc 156750: Order and 
+Opinion (has_text=True)
+   Fetching text from: 
+https://clearinghouse.net
+/api/v2p1/documents/15675
+0/text/
+   Content Preview: {   
+"id": 156750,   "text": 
+"United States Court of 
+Appeals\nFOR THE DISTRICT
+OF COLUMBIA 
+CIRCUIT\n____________\nNo
+. 25-5052 September Term,
+2024\n1:25-cv-00385-ABJ\n
+Filed On: March 10, 
+2025\nHampton Dellinger, 
+in his personal 
+capacity\nand in his 
+official capacity as 
+Special Counsel\nof the 
+Office of Special 
+Counsel,\nAppellee\nv.\nS
+cott Bessent, in his 
+official capacity 
+as\nSecretary of the 
+Treasury, et 
+al.,\nAppellants\nBEFORE:
+Henderson, Millett, and 
+Walker, Circuit Judges\nO
+R D E R   A N D...
+Doc 156749: Appellee's 
+Motion to Dismiss as Moot
+(has_text=True)
+   Fetching text from: 
+https://clearinghouse.net
+/api/v2p1/documents/15674
+9/text/
+   Content Preview: {   
+"id": 156749,   "text": 
+"ORAL ARGUMENT NOT YET 
+SCHEDULED \nIN 
+THE\nUnited States Court 
+of Appeals \nFOR THE 
+DISTRICT OF COLUMBIA 
+CIRCUIT\nNo.             
+25-5052\nHAMPTON 
+DELLINGER, IN HIS 
+PERSONAL CAPACITY AND IN 
+HIS OFFICIAL\nCAPACITY AS
+SPECIAL COUNSEL OF THE 
+OFFICE OF SPECIAL 
+COUNSEL, 
+\nPlaintiff-Appellee, 
+\n\u2014v.\u2014 \nSCOTT 
+BESSENT, IN HIS OFFICIAL 
+CAPACITY AS SECRETARY OF 
+THE \nTREASURY, ET AL.,  
+Defendants-Appellants. 
+\nON APPEAL FROM THE 
+UNITED STATES DISTRICT 
+COURT \nFOR THE ...
+Doc 156682: Letter 
+Response to Plaintiffs 
+(has_text=True)
+   Fetching text from: 
+https://clearinghouse.net
+/api/v2p1/documents/15668
+2/text/
+   Content Preview: {   
+"id": 156682,   "text": "
+U.S. Department of 
+Justice \n    Civil 
+Division, Appellate Staff
+\n    950 Pennsylvania 
+Ave. NW \n              
+Washington, DC 20530   \n
+\nTel.: (202) 305-1754 \n
+\n  March 6, 2025 \nVia 
+CM/ECF \n \nClifton 
+Cislak, Clerk of Court 
+\nU.S. Court of Appeals 
+for the District of 
+Columbia Circuit \nE. 
+Barrett Prettyman U.S. 
+Courthouse \n333 
+Constitution Avenue NW 
+\nWashington, D.C. 20001 
+\n \nRE:  Dellinger v. 
+Bessent, No. 25-5052 \n 
+\nDear Mr. Cislak: \n 
+\nWe  write  ...
+Doc 156681: Letter on 
+Behalf of Plaintiff 
+(has_text=True)
+   Fetching text from: 
+https://clearinghouse.net
+/api/v2p1/documents/15668
+1/text/
+   Content Preview: {   
+"id": 156681,   "text": 
+"USCA Case #25-5052      
+Document #2104288        
+Filed: 03/06/2025      
+Page 1 of 3\nHecker Fink 
+LLP  350 FIFTH AVENUE I 
+63\"\u00b0 FLOOR \nNEW 
+YORK, NEW YORK 10118 
+\n1050 K STREET NW I 
+SUITE 1040 \nWASHINGTON, 
+DC 20001 \nTEL (212) 
+763-0883 I FAX (212) 
+564-0883 \nWWW.HECKER Fl 
+N K.COM \n \n    DIRECT 
+DIAL  929.294.2537 
+\nDIRECT EMAIL  
+jmatz@heckerfink.com \n  
+\n \nMarch 6, 2025 \nBY 
+CM/ECF \nClifton Cislak, 
+Clerk of Court \nU.S. 
+Court of Appeals for the 
+District...
+Doc 156574: Order 
+(has_text=True)
+   Fetching text from: 
+https://clearinghouse.net
+/api/v2p1/documents/15657
+4/text/
+   Content Preview: {   
+"id": 156574,   "text": 
+"United States Court of 
+Appeals\nFOR THE DISTRICT
+OF COLUMBIA 
+CIRCUIT\n____________\nNo
+. 25-5052 September Term,
+2024\n1:25-cv-00385-ABJ\n
+Filed On:  March 5, 2025 
+\nHampton Dellinger, in 
+his personal 
+capacity\nand in his 
+official capacity as 
+Special Counsel\nof the 
+Office of Special 
+Counsel,\nAppellee\nv.\nS
+cott Bessent, in his 
+official capacity 
+as\nSecretary of the 
+Treasury, et 
+al.,\nAppellants\nBEFORE:
+Henderson, Millett, and 
+Walker, Circuit Judges\nO
+R D E R\nUpon ...
+Doc 156500: Order 
+(has_text=True)
+   Fetching text from: 
+https://clearinghouse.net
+/api/v2p1/documents/15650
+0/text/
+   Content Preview: {   
+"id": 156500,   "text": 
+"Case 1:25-cv-00385-ABJ  
+Document 39     Filed 
+03/03/25     Page 1 of 
+3\nUNITED STATES DISTRICT
+COURT \nFOR THE DISTRICT 
+OF COLUMBIA \n 
+\n_______________________
+_____________ \n) 
+\nHAMPTON DELLINGER  ) 
+\nin his personal 
+capacity and   ) \nin his
+official capacity as   ) 
+\nSpecial Counsel of the 
+) \nOffice of Special 
+Counsel,  ) \n) 
+\nPlaintiff,  ) \n)  
+Civil Action No. 25-0385 
+(ABJ) \nv.  )   \n) 
+\nSCOTT BESSENT  ) \nin 
+his official capacity as 
+) \nSecretary of...
+
+3. Fetching Dockets 
+(_fetch_dockets)...
+Found 5 dockets.
+[                        
+  {                      
+    "id": 60975,         
+    "docket_entries": [  
+      {                  
+        "row_number": 4, 
+        "id": 9393272,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "C
+      },                 
+      {                  
+        "row_number": 29,
+        "id": 9427778,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 5, 
+        "id": 9393273,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "E
+      },                 
+      {                  
+        "row_number": 13,
+        "id": 9393280,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "A
+      },                 
+      {                  
+        "row_number": 18,
+        "id": 9398141,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "A
+      },                 
+      {                  
+        "row_number": 11,
+        "id": 9393279,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": [ 
+          {              
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          }              
+        ],               
+        "url": null,     
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "C
+      },                 
+      {                  
+        "row_number": 16,
+        "id": 9398139,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": [ 
+          {              
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          }              
+        ],               
+        "url": null,     
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 19,
+        "id": 9398142,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 20,
+        "id": 9398143,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "A
+      },                 
+      {                  
+        "row_number": 36,
+        "id": 9398145,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "P
+      },                 
+      {                  
+        "row_number": 30,
+        "id": 9446895,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "C
+      },                 
+      {                  
+        "row_number": 6, 
+        "id": 9393274,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "E
+      },                 
+      {                  
+        "row_number": 10,
+        "id": 9393278,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "A
+      },                 
+      {                  
+        "row_number": 12,
+        "id": 9398136,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "L
+      },                 
+      {                  
+        "row_number": 8, 
+        "id": 9393276,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "E
+      },                 
+      {                  
+        "row_number": 26,
+        "id": 9427775,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "P
+      },                 
+      {                  
+        "row_number": 27,
+        "id": 9427776,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "R
+      },                 
+      {                  
+        "row_number": 22,
+        "id": 9404573,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "L
+      },                 
+      {                  
+        "row_number": 33,
+        "id": 10094588,  
+        "entry_number": "
+        "date_filed": "20
+        "attachments": nu
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "P
+      },                 
+      {                  
+        "row_number": 35,
+        "id": 9393267,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "U
+      },                 
+      {                  
+        "row_number": 21,
+        "id": 9398144,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "P
+      },                 
+      {                  
+        "row_number": 3, 
+        "id": 9393271,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "P
+      },                 
+      {                  
+        "row_number": 17,
+        "id": 9398140,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "R
+      },                 
+      {                  
+        "row_number": 9, 
+        "id": 9393277,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "C
+      },                 
+      {                  
+        "row_number": 31,
+        "id": 9446896,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "R
+      },                 
+      {                  
+        "row_number": 34,
+        "id": 10202150,  
+        "entry_number": "
+        "date_filed": "20
+        "attachments": nu
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 14,
+        "id": 9398137,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "R
+      },                 
+      {                  
+        "row_number": 24,
+        "id": 9404575,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 1, 
+        "id": 9393269,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "E
+      },                 
+      {                  
+        "row_number": 25,
+        "id": 10221228,  
+        "entry_number": "
+        "date_filed": "20
+        "attachments": nu
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 32,
+        "id": 9639186,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "C
+      },                 
+      {                  
+        "row_number": 7, 
+        "id": 9393275,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "E
+      },                 
+      {                  
+        "row_number": 15,
+        "id": 9398138,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "A
+      },                 
+      {                  
+        "row_number": 23,
+        "id": 9404574,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "R
+      },                 
+      {                  
+        "row_number": 0, 
+        "id": 9393268,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 2, 
+        "id": 9393270,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "E
+      },                 
+      {                  
+        "row_number": 28,
+        "id": 9427777,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "P
+      }                  
+    ],                   
+    "docket_case_type": "
+    "docket_year": 2025, 
+    "docket_filing_number
+    "is_main_docket": fal
+    "court": "U.S. Court 
+    "state": "District of
+    "docket_office_number
+    "docket_number_manual
+    "scales_html": null, 
+    "recap_link": "https:
+    "is_active": true    
+  },                     
+  {                      
+    "id": 60829,         
+    "docket_entries": [],
+    "docket_case_type": "
+    "docket_year": 2024, 
+    "docket_filing_number
+    "is_main_docket": fal
+    "court": "Supreme Cou
+    "state": null,       
+    "docket_office_number
+    "docket_number_manual
+    "scales_html": null, 
+    "recap_link": null,  
+    "is_active": true    
+  },                     
+  {                      
+    "id": 60810,         
+    "docket_entries": [  
+      {                  
+        "row_number": 0, 
+        "id": 9343620,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 2, 
+        "id": 9343622,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "P
+      },                 
+      {                  
+        "row_number": 1, 
+        "id": 9343621,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 7, 
+        "id": 9343619,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "U
+      },                 
+      {                  
+        "row_number": 3, 
+        "id": 9343623,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "R
+      },                 
+      {                  
+        "row_number": 5, 
+        "id": 10188579,  
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "P
+      },                 
+      {                  
+        "row_number": 6, 
+        "id": 10202340,  
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 4, 
+        "id": 9343624,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "L
+      }                  
+    ],                   
+    "docket_case_type": "
+    "docket_year": 2025, 
+    "docket_filing_number
+    "is_main_docket": fal
+    "court": "U.S. Court 
+    "state": "District of
+    "docket_office_number
+    "docket_number_manual
+    "scales_html": null, 
+    "recap_link": "https:
+    "is_active": true    
+  },                     
+  {                      
+    "id": 60784,         
+    "docket_entries": [],
+    "docket_case_type": "
+    "docket_year": 2025, 
+    "docket_filing_number
+    "is_main_docket": fal
+    "court": "U.S. Court 
+    "state": null,       
+    "docket_office_number
+    "docket_number_manual
+    "scales_html": null, 
+    "recap_link": "https:
+    "is_active": true    
+  },                     
+  {                      
+    "id": 60772,         
+    "docket_entries": [  
+      {                  
+        "row_number": 15,
+        "id": 9331867,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 28,
+        "id": 9385436,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "R
+      },                 
+      {                  
+        "row_number": 77,
+        "id": 9525917,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": ".
+      },                 
+      {                  
+        "row_number": 43,
+        "id": 10202463,  
+        "entry_number": "
+        "date_filed": "20
+        "attachments": [ 
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          }              
+        ],               
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 13,
+        "id": 9331865,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "O
+      },                 
+      {                  
+        "row_number": 29,
+        "id": 9385439,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 54,
+        "id": 10221651,  
+        "entry_number": n
+        "date_filed": "20
+        "attachments": nu
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "N
+      },                 
+      {                  
+        "row_number": 56,
+        "id": 9329816,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 17,
+        "id": 9368162,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 41,
+        "id": 9394007,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 0, 
+        "id": 9329802,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": [ 
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          }              
+        ],               
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "C
+      },                 
+      {                  
+        "row_number": 35,
+        "id": 9391700,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 20,
+        "id": 9368168,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "R
+      },                 
+      {                  
+        "row_number": 71,
+        "id": 9385442,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 57,
+        "id": 9330849,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "U
+      },                 
+      {                  
+        "row_number": 10,
+        "id": 9330852,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "R
+      },                 
+      {                  
+        "row_number": 37,
+        "id": 9394003,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 50,
+        "id": 10221650,  
+        "entry_number": n
+        "date_filed": "20
+        "attachments": nu
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 26,
+        "id": 9385434,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "O
+      },                 
+      {                  
+        "row_number": 49,
+        "id": 9329809,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 23,
+        "id": 9372710,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 7, 
+        "id": 9330848,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "T
+      },                 
+      {                  
+        "row_number": 1, 
+        "id": 9329805,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": [ 
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          }              
+        ],               
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 48,
+        "id": 9329807,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "N
+      },                 
+      {                  
+        "row_number": 4, 
+        "id": 9329810,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": [ 
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          }              
+        ],               
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 52,
+        "id": 9329813,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 53,
+        "id": 9329814,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "N
+      },                 
+      {                  
+        "row_number": 55,
+        "id": 9329815,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 5, 
+        "id": 9329817,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 58,
+        "id": 9330853,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "U
+      },                 
+      {                  
+        "row_number": 16,
+        "id": 9368159,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "T
+      },                 
+      {                  
+        "row_number": 59,
+        "id": 9368160,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "U
+      },                 
+      {                  
+        "row_number": 63,
+        "id": 9368167,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "O
+      },                 
+      {                  
+        "row_number": 65,
+        "id": 9372712,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "N
+      },                 
+      {                  
+        "row_number": 25,
+        "id": 9385432,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 69,
+        "id": 9385438,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "O
+      },                 
+      {                  
+        "row_number": 70,
+        "id": 9385440,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 30,
+        "id": 9385441,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "L
+      },                 
+      {                  
+        "row_number": 72,
+        "id": 9394001,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "U
+      },                 
+      {                  
+        "row_number": 39,
+        "id": 9394005,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 40,
+        "id": 9394006,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 75,
+        "id": 9446893,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 76,
+        "id": 9525916,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 45,
+        "id": 10202465,  
+        "entry_number": "
+        "date_filed": "20
+        "attachments": [ 
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          }              
+        ],               
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 62,
+        "id": 9368166,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 11,
+        "id": 9330854,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 8, 
+        "id": 9330850,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "T
+      },                 
+      {                  
+        "row_number": 33,
+        "id": 9391698,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 18,
+        "id": 9368163,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "O
+      },                 
+      {                  
+        "row_number": 36,
+        "id": 9391701,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 19,
+        "id": 9368164,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "J
+      },                 
+      {                  
+        "row_number": 73,
+        "id": 9394002,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "U
+      },                 
+      {                  
+        "row_number": 22,
+        "id": 9372709,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "C
+      },                 
+      {                  
+        "row_number": 47,
+        "id": 9329804,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": ".
+      },                 
+      {                  
+        "row_number": 14,
+        "id": 9331866,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 61,
+        "id": 9368165,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": ".
+      },                 
+      {                  
+        "row_number": 27,
+        "id": 9385435,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "T
+      },                 
+      {                  
+        "row_number": 32,
+        "id": 9391697,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "O
+      },                 
+      {                  
+        "row_number": 46,
+        "id": 9329803,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "O
+      },                 
+      {                  
+        "row_number": 3, 
+        "id": 9329808,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": [ 
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "pdf_url": "h
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          }              
+        ],               
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 68,
+        "id": 9385437,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "O
+      },                 
+      {                  
+        "row_number": 64,
+        "id": 9372711,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "N
+      },                 
+      {                  
+        "row_number": 67,
+        "id": 9385433,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "M
+      },                 
+      {                  
+        "row_number": 34,
+        "id": 9391699,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "T
+      },                 
+      {                  
+        "row_number": 42,
+        "id": 9480576,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "L
+      },                 
+      {                  
+        "row_number": 44,
+        "id": 10202464,  
+        "entry_number": "
+        "date_filed": "20
+        "attachments": [ 
+          {              
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          }              
+        ],               
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 38,
+        "id": 9394004,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "O
+      },                 
+      {                  
+        "row_number": 6, 
+        "id": 9329818,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 2, 
+        "id": 9329806,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 21,
+        "id": 9368169,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": [ 
+          {              
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          },             
+          {              
+            "recap_id": 4
+            "pacer_url": 
+            "description"
+            "attachment_n
+          }              
+        ],               
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 12,
+        "id": 9331864,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "N
+      },                 
+      {                  
+        "row_number": 9, 
+        "id": 9330851,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 66,
+        "id": 9385431,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "P
+      },                 
+      {                  
+        "row_number": 60,
+        "id": 9368161,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "U
+      },                 
+      {                  
+        "row_number": 74,
+        "id": 9446892,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "O
+      },                 
+      {                  
+        "row_number": 31,
+        "id": 9391696,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "M
+      },                 
+      {                  
+        "row_number": 51,
+        "id": 9329812,   
+        "entry_number": n
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": n
+        "description": "C
+      },                 
+      {                  
+        "row_number": 24,
+        "id": 9372713,   
+        "entry_number": "
+        "date_filed": "20
+        "attachments": []
+        "url": "https://w
+        "recap_pdf_url": 
+        "pacer_doc_id": "
+        "description": "R
+      }                  
+    ],                   
+    "docket_case_type": "
+    "docket_year": 2025, 
+    "docket_filing_number
+    "is_main_docket": tru
+    "court": "District of
+    "state": "District of
+    "docket_office_number
+    "docket_number_manual
+    "scales_html": null, 
+    "recap_link": "https:
+    "is_active": true    
+  }                      
+]                        

@@ -349,8 +349,16 @@ class LLMLogViewer(tk.Tk):
         self._build_widgets()
         self.bind("<Down>", self._on_arrow_down)
         self.bind("<Up>", self._on_arrow_up)
+        self.bind("<Left>", self._select_previous)
+        self.bind("<Right>", self._select_next)
         self._refresh_log_selector(initial=True)
         self._refresh_entries(initial_load=True)
+
+    def _select_previous(self, _event: Optional[tk.Event] = None) -> str:
+        return self._move_selection(-1)
+
+    def _select_next(self, _event: Optional[tk.Event] = None) -> str:
+        return self._move_selection(1)
 
     def _set_log_path(self, path: Path, *, update_selector: bool = True) -> None:
         resolved = path.resolve()
@@ -458,18 +466,24 @@ class LLMLogViewer(tk.Tk):
         toolbar.columnconfigure(2, weight=1)
 
         refresh_button = ttk.Button(toolbar, text="Refresh", command=self._refresh_entries)
-        refresh_button.grid(row=0, column=0, padx=(0, 8))
+        refresh_button.grid(row=0, column=0, padx=(0, 4))
+
+        prev_button = ttk.Button(toolbar, text="< Prev", command=self._select_previous)
+        prev_button.grid(row=0, column=1, padx=(0, 2))
+
+        next_button = ttk.Button(toolbar, text="Next >", command=self._select_next)
+        next_button.grid(row=0, column=2, padx=(0, 8))
 
         log_label = ttk.Label(toolbar, text=f"{self.log_label} log:")
-        log_label.grid(row=0, column=1, sticky="w", padx=(0, 4))
+        log_label.grid(row=0, column=3, sticky="w", padx=(0, 4))
 
         self.log_selector = ttk.Combobox(toolbar, state="readonly", textvariable=self.log_selector_var)
-        self.log_selector.grid(row=0, column=2, sticky="ew")
+        self.log_selector.grid(row=0, column=4, sticky="ew")
         self.log_selector.bind("<<ComboboxSelected>>", self._on_log_selected)
 
         self.status_var = tk.StringVar(value="Ready")
         self.status_label = ttk.Label(toolbar, textvariable=self.status_var)
-        self.status_label.grid(row=0, column=3, sticky="e")
+        self.status_label.grid(row=0, column=5, sticky="e")
 
         paned = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
         paned.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))

@@ -99,8 +99,11 @@ class AgentDriver:
             if tool:
                 try:
                     logger.info("Executing tool %s with args %s", tool_name, tool_args)
-                    # Validate input?
-                    result = tool.call(tool_args)
+                    # Use safe_call to validate inputs first
+                    if hasattr(tool, "safe_call"):
+                        result = tool.safe_call(tool_args)
+                    else:
+                        result = tool.call(tool_args)
                 except Exception as e:
                     logger.error("Tool execution failed: %s", e)
                     result = {"error": str(e)}

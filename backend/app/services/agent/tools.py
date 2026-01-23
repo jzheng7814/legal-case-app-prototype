@@ -51,6 +51,36 @@ class BaseTool(ABC):
             "output_schema": self.get_output_schema()
         }
     
+    def validate_args(self, args: Dict[str, Any]) -> Optional[str]:
+        """
+        Validates arguments against the schema.
+        Returns error string if invalid, None if valid.
+        """
+        schema = self.get_input_schema()
+        required = schema.get("required", [])
+        properties = schema.get("properties", {})
+        
+        # Check required fields
+        missing = [k for k in required if k not in args]
+        if missing:
+            return f"Missing required arguments: {', '.join(missing)}. Schema: {json.dumps(properties)}"
+            
+        # Check for unknown arguments (optional, but good for "hallucination" control)
+        # unknown = [k for k in args if k not in properties]
+        # if unknown:
+        #    return f"Unknown arguments provided: {', '.join(unknown)}. Allowed: {list(properties.keys())}"
+            
+        return None
+
+    def safe_call(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Wrapper that validates args before calling the tool.
+        """
+        error = self.validate_args(args)
+        if error:
+            return {"error": error}
+        return self.call(args)
+
     @abstractmethod
     def call(self, args: Dict[str, Any]) -> Dict[str, Any]:
         pass

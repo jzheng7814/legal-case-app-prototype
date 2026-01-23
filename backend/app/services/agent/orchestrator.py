@@ -37,10 +37,10 @@ class Orchestrator:
         tools_desc = []
         for name, tool in self._tools.items():
             desc = tool.describe()
-            # simplified description
-            tools_desc.append(f"- {name}: {desc['description']}")
+            schema = json.dumps(desc.get("input_schema"), indent=2)
+            tools_desc.append(f"## {name}\n{desc['description']}\nInput Schema:\n{schema}")
             
-        tool_list = "\n".join(tools_desc)
+        tool_list = "\n\n".join(tools_desc)
         
         return base_prompt.format(tool_list=tool_list)
 

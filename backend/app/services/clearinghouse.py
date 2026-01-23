@@ -60,7 +60,7 @@ def _count_results(payload: Any) -> Optional[int]:
 def _log_file(record: Dict[str, Any]) -> None:
     _file_logger.info(_safe_json_dump(record))
 
-_API_BASE_URL = "https://clearinghouse.net/api/v2"
+_API_BASE_URL = "https://clearinghouse.net/api/v2p1"
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 
 
@@ -223,8 +223,8 @@ class ClearinghouseClient:
         return payload
 
     def _fetch_case(self, case_id: str) -> Optional[Dict[str, Any]]:
-        # Note: Clearinghouse uses param "case_id" for case queries
-        payload = self._request("/case/", params={"case_id": case_id})
+        # v2.1: /cases/?case_id={id}
+        payload = self._request("/cases/", params={"case_id": case_id})
         results = payload.get("results") if isinstance(payload, dict) else None
         if isinstance(results, list) and results:
             first = results[0]
@@ -232,7 +232,8 @@ class ClearinghouseClient:
         return None
 
     def _fetch_documents(self, case_id: str) -> List[Dict[str, Any]]:
-        payload = self._request("/documents/", params={"case": case_id})
+        # v2.1: /cases/{id}/documents/
+        payload = self._request(f"/cases/{case_id}/documents/")
         if isinstance(payload, dict) and isinstance(payload.get("results"), list):
             return [item for item in payload["results"] if isinstance(item, dict)]
         if isinstance(payload, list):
@@ -240,12 +241,33 @@ class ClearinghouseClient:
         return []
 
     def _fetch_dockets(self, case_id: str) -> List[Dict[str, Any]]:
-        payload = self._request("/dockets/", params={"case": case_id})
+        # v2.1: /cases/{id}/dockets/
+        payload = self._request(f"/cases/{case_id}/dockets/")
         if isinstance(payload, dict) and isinstance(payload.get("results"), list):
             return [item for item in payload["results"] if isinstance(item, dict)]
         if isinstance(payload, list):
             return [item for item in payload if isinstance(item, dict)]
         return []
+
+    def _fetch_full_text(self, url: str) -> Optional[str]:
+        """Fetch full text from the dedicated text URL."""
+        if not url:
+            return None
+        try:
+            # We use custom request logic here because text_url is absolute
+            # and might return a large payload we want to handle carefully.
+            # Using self._headers() ensures we stay authenticated.
+            response = httpx.get(url, headers=self._headers(), timeout=self._timeout)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict):
+                return data.get("text")
+            return None
+        except Exception: 
+            # If fetching fails, we just don't have the text. 
+            # Logging implicitly via exceptions if we want, but let's keep it quiet for now 
+            # or log a warning.
+            return None
 
     def _convert_document(self, raw: Dict[str, Any], case_title: Optional[str]) -> Document:
         document_id_raw = raw.get("id") or raw.get("document_id")
@@ -265,6 +287,14 @@ class ClearinghouseClient:
             or "Document"
         )
         doc_type = doc_type.replace("_", " ").strip().title()
+
+        # Check if we need to fetch text separately
+        text_url = raw.get("text_url")
+        if not raw.get("text") and text_url:
+            logger.info("Fetching full text for document %s from %s", document_id, text_url)
+            fetched_text = self._fetch_full_text(text_url)
+            if fetched_text:
+                raw["text"] = fetched_text
 
         content = _render_document_content(raw)
 

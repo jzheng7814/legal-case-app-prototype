@@ -108,7 +108,7 @@ class SnapshotBuilder:
                 tool=h["tool"],
                 target=h["args"],
                 result_summary=h["result"] if isinstance(h["result"], dict) else {"raw": str(h["result"])},
-                # error/validation not tracked in simplified ledger yet, need to add
+                error=h["result"].get("error") if isinstance(h["result"], dict) else None,
             ))
 
         return Snapshot(
