@@ -1,6 +1,6 @@
 {
   "model": {
-    "provider": "openai",
+    "provider": "ollama",
     "defaults": {
       "temperature": 0.3,
       "max_output_tokens": 16384
@@ -12,7 +12,7 @@
     },
     "ollama": {
       "base_url": "http://127.0.0.1:11434",
-      "timeout_seconds": 30,
+      "timeout_seconds": 300,
       "response_model": "qwen3:8b",
       "conversation_model": "qwen3:8b"
     }

@@ -17,6 +17,7 @@ from app.services.agent.tools import (
 )
 from app.services.agent.tokenizer import TokenizerWrapper
 from app.schemas.checklists import EvidenceCollection
+from app.services.agent.schemas import OrchestratorAction
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,21 @@ class AgentDriver:
             ledger=self.ledger,
             tokenizer=self.tokenizer
         )
+
+    def _is_looping(self, action: OrchestratorAction, threshold: int = 3) -> bool:
+        history = self.ledger.get_recent_history(n=threshold)
+        if len(history) < threshold:
+            return False
+            
+        # Check if all recent actions match the current action
+        for entry in history:
+            if entry["tool"] != action.tool_name:
+                return False
+            # Compare args
+            if entry["args"] != action.tool_args:
+                return False
+        
+        return True
 
     def _register_tools(self):
         # Instantiate tools
@@ -79,6 +95,18 @@ class AgentDriver:
             # 3. Decide Action
             action_plan = await self.orchestrator.decide_next_action(snapshot, prompt)
             
+            # Loop Detection
+            if self._is_looping(action_plan):
+                logger.warning("Detected loop: Agent repeating action %s. Stopping.", action_plan.tool_name)
+                # Record the stop
+                self.ledger.record_action(
+                    step=step,
+                    tool_name="stop_loop",
+                    args={"reason": "Repetitive action detected"},
+                    result={"status": "stopped_by_driver"}
+                )
+                break
+            
             # Check for stop
             if action_plan.stop_decision:
                 logger.info("Agent decided to stop: %s", action_plan.stop_reason)
@@ -94,22 +122,28 @@ class AgentDriver:
             tool_name = action_plan.tool_name
             tool_args = action_plan.tool_args or {}
             
-            tool = self.orchestrator._tools.get(tool_name)
-            result = None
-            if tool:
-                try:
-                    logger.info("Executing tool %s with args %s", tool_name, tool_args)
-                    # Use safe_call to validate inputs first
-                    if hasattr(tool, "safe_call"):
-                        result = tool.safe_call(tool_args)
-                    else:
-                        result = tool.call(tool_args)
-                except Exception as e:
-                    logger.error("Tool execution failed: %s", e)
-                    result = {"error": str(e)}
+            if tool_name == "error":
+                # The Orchestrator signaled an error (e.g., parsing failure or no tool called)
+                # Pass this failure info back to the model as the result
+                result = tool_args
+                logger.warning("Orchestrator reported error: %s", tool_args)
             else:
-                logger.warning("Tool not found: %s", tool_name)
-                result = {"error": f"Tool '{tool_name}' not found"}
+                tool = self.orchestrator._tools.get(tool_name)
+                result = None
+                if tool:
+                    try:
+                        logger.info("Executing tool %s with args %s", tool_name, tool_args)
+                        # Use safe_call to validate inputs first
+                        if hasattr(tool, "safe_call"):
+                            result = tool.safe_call(tool_args)
+                        else:
+                            result = tool.call(tool_args)
+                    except Exception as e:
+                        logger.error("Tool execution failed: %s", e)
+                        result = {"error": str(e)}
+                else:
+                    logger.warning("Tool not found: %s", tool_name)
+                    result = {"error": f"Tool '{tool_name}' not found"}
 
             # 5. Update Ledger
             self.ledger.record_action(

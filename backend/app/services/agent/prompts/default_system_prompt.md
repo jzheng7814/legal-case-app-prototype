@@ -17,20 +17,10 @@ Choose exactly one action each turn:
 - Periodically use `get_checklist` to assess remaining gaps.
 - Stop when all keys are filled or set to Not Applicable.
 
-# Available Tools
-{tool_list}
+# Response Guideline
+The user will provide the current Snapshot.
+You must use the provided tools to perform actions. 
+Start every turn by analyzing the situation, then call **exactly one tool**.
 
-# Response Format
-You must respond with a JSON object describing your action.
-{{
-  "thought": "<brief reasoning>",
-  "tool_name": "<name of tool>",
-  "tool_args": {{ <arguments matching tool schema> }}
-}}
+To stop the task, you MUST call the `stop_task` tool with a reason. Do not just output text saying you are done.
 
-OR if you are finished:
-{{
-  "thought": "<reasoning>",
-  "decision": "stop",
-  "reason": "<justification>"
-}}

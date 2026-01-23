@@ -29,6 +29,7 @@ class LLMResult:
     text: str
     raw: Dict[str, Any] | None = None
     tool_outputs: List["LLMToolHandlerResult"] = field(default_factory=list)
+    tool_calls: List["LLMToolCall"] = field(default_factory=list)
 
 
 @dataclass
@@ -85,6 +86,7 @@ class LLMBackend:
         messages: List[LLMMessage],
         *,
         system: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResult:
         raise NotImplementedError
 
@@ -158,7 +160,19 @@ class OllamaBackend(LLMBackend):
             "Respond with JSON only, no natural language commentary.\n\n"
             f"{prompt}"
         )
-        result = await self.generate_response(json_prompt, system=system)
+        payload: Dict[str, Any] = {
+            "model": self._response_model,
+            "prompt": json_prompt,
+            "stream": False,
+            "format": "json",
+            "options": self._build_options(),
+        }
+        if system:
+            payload["system"] = system
+
+        raw_response = await self._post("/api/generate", payload)
+        text = _strip_reasoning_tokens(raw_response.get("response", "").strip())
+        result = LLMResult(text=text, raw=raw_response)
         try:
             return response_model.model_validate_json(result.text)
         except (ValidationError, ValueError) as exc:
@@ -170,6 +184,7 @@ class OllamaBackend(LLMBackend):
         messages: List[LLMMessage],
         *,
         system: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResult:
         payload_messages: List[Dict[str, str]] = []
         if system:
@@ -182,8 +197,27 @@ class OllamaBackend(LLMBackend):
             "stream": False,
             "options": self._build_options(),
         }
+
+        if tools:
+            payload["tools"] = tools
+
         raw_response = await self._post("/api/chat", payload)
         message_block = raw_response.get("message") or {}
+        
+        tool_calls = message_block.get("tool_calls")
+        llm_tool_calls = []
+        
+        if tool_calls:
+            for tc in tool_calls:
+                func = tc.get("function", {})
+                llm_tool_calls.append(
+                    LLMToolCall(
+                        name=func.get("name", ""),
+                        arguments=json.dumps(func.get("arguments", {})),
+                        call_id="" # Ollama might not return call_id
+                    )
+                )
+
         content = message_block.get("content")
         if isinstance(content, list):
             text = "".join(part.get("text", "") for part in content)
@@ -191,8 +225,15 @@ class OllamaBackend(LLMBackend):
             text = content
         else:
             text = raw_response.get("response", "")
-        cleaned = _strip_reasoning_tokens(text.strip())
-        return LLMResult(text=cleaned, raw=raw_response)
+        
+        cleaned = _strip_reasoning_tokens(text.strip()) if text else ""
+        
+        return LLMResult(
+            text=cleaned, 
+            raw=raw_response,
+            tool_outputs=[],
+            tool_calls=llm_tool_calls
+        )
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -286,22 +327,42 @@ class OpenAIBackend(LLMBackend):
         messages: List[LLMMessage],
         *,
         system: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResult:
         input_messages: List[Dict[str, str]] = []
         if system:
             input_messages.append({"role": "system", "content": system})
         input_messages.extend({"role": message.role, "content": message.content} for message in messages)
 
-        response = await self._client.responses.create(
-            model=self._conversation_model,
-            input=input_messages,
-            max_output_tokens=self._defaults.max_output_tokens,
-            reasoning={
+        kwargs = {
+            "model": self._conversation_model,
+            "input": input_messages,
+            "max_output_tokens": self._defaults.max_output_tokens,
+            "reasoning": {
                 "effort": self._reasoning_effort,
             }
-        )
+        }
+
+        if tools:
+            kwargs["tools"] = tools
+
+        response = await self._client.responses.create(**kwargs)
+        
         text = _strip_reasoning_tokens(_collect_openai_text(response)).strip()
-        return LLMResult(text=text, raw=response.model_dump())
+        
+        llm_tool_calls = []
+        output = getattr(response, "output", None) or []
+        for item in output:
+             if getattr(item, "type", None) == "function_call":
+                 llm_tool_calls.append(
+                     LLMToolCall(
+                         name=item.name,
+                         arguments=item.arguments,
+                         call_id=item.call_id
+                     )
+                 )
+        
+        return LLMResult(text=text, raw=response.model_dump(), tool_calls=llm_tool_calls)
 
     async def chat_with_tools(
         self,
@@ -546,7 +607,8 @@ class LLMService:
         messages: List[LLMMessage],
         *,
         system: Optional[str] = None,
-    ) -> str:
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> LLMResult:
         preview = ""
         if messages:
             last = messages[-1]
@@ -558,12 +620,16 @@ class LLMService:
             request_payload={
                 "messages": [message.__dict__ for message in messages],
                 "system": system,
+                "tools": tools,
             },
             is_chat=True,
         )
-        result = await self._backend.chat(messages, system=system)
+        result = await self._backend.chat(messages, system=system, tools=tools)
         self._log_response("chat", getattr(result, "raw", None))
-        return result.text
+
+        return result
+
+
 
     async def chat_with_tools(
         self,

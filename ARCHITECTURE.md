@@ -22,13 +22,25 @@ The backend is a **FastAPI** service built on modular routers and services.
 - **Reasoning Handling**: Automatically strips `<think>` tags from reasoning models (e.g., DeepSeek-R1, Qwen-2.5) to ensure clean output.
 - **Mock Mode**: Deterministic backend for zero-cost UI testing (`LEGAL_CASE_USE_MOCK_LLM=true`).
 
+#### 🤖 Agent Service (`agent/`)
+-   **Purpose**: Replaces the legacy sequential extraction with a robust **Agentic Workflow**.
+-   **Components**:
+    -   **`AgentDriver`**: The main loop (Think -> Act -> Observe). Manages the step limit and ledger.
+    -   **`Orchestrator`**: The "Brain". Uses LLM to decide the next action based on the current Snapshot.
+    -   **`SnapshotBuilder`**: Compiles the current state (Progress, Documents, History) into a prompt-ready format.
+    -   **`Tools`**: Specialized actions (`read_document`, `search_document_regex`, `update_checklist`) given to the agent.
+-   **Advantages**:
+    -   Can "hunt" for information across multiple documents.
+    -   Self-corrects when information is missing or ambiguous.
+    -   Maintains a "Ledger" of actions for auditability.
+    
 #### 📝 Checklist Service (`checklists.py`)
-- **Purpose**: The "Knowledge Base" of the case.
-- **Extraction**: Uses `generate_structured` to fill 30+ specific evidence fields defined in `item_specific_info_improved.json`.
-- **Hybrid Data Model**:
-  - **AI Items**: Extracted automatically. Immutable by user (can be deleted/hidden).
-  - **User Items**: Manually added by attorney. Stored in `user_items` list.
-- **Caching**: Uses **Signature Hash** (SHA256 of `CaseID + DocumentContent + Version`). If docs change, cache invalidates.
+-   **Purpose**: The "Knowledge Base" (Store) for the Agent.
+-   **Function**: Initializes the agent run and persists the final `EvidenceCollection`.
+-   **Hybrid Data Model**:
+    -   **AI Items**: Populated by the Agent via tool calls.
+    -   **User Items**: Manually added by attorney.
+-   **Caching**: Uses **Signature Hash** (SHA256 of `CaseID + DocumentContent + Version`).
 
 #### 📄 Summary Service (`summary.py`)
 - **Workflow**:
@@ -55,7 +67,8 @@ The backend is a **FastAPI** service built on modular routers and services.
 #### 🏛 `app.services.clearinghouse`
 **`ClearinghouseClient`**
 - `__init__(api_key)`: Configures the client.
-- `fetch_case_documents(case_id) -> Tuple[List[Document], str]`: Fetches case metadata, documents, and docket from Clearinghouse.net API and converts them to the internal `Document` schema.
+- `fetch_case_documents(case_id) -> Tuple[List[Document], str]`: Fetches case metadata, documents, and docket.
+- **Text Hydration**: Automatically follows `text_url` links to fetch full document content if inline text is missing (essential for "Order" documents).
 
 ---
 

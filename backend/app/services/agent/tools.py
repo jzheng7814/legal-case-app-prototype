@@ -569,3 +569,35 @@ class AppendChecklistTool(BaseTool):
 
         return {"updated_keys": updated_keys, "errors": errors}
 
+
+from pydantic import Field
+
+class StopTool(BaseTool):
+    """
+    Tool for the agent to signal that it wants to stop the task.
+    """
+    def __init__(self):
+        super().__init__(
+            name="stop_task",
+            description="Stop the extraction task. CALL THIS ONLY when you have extracted all information or cannot proceed further. You must provide a reason."
+        )
+
+    def get_input_schema(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string", 
+                    "description": "Explanation for why the agent is stopping."
+                }
+            },
+            "required": ["reason"]
+        }
+
+    def get_output_schema(self) -> Dict[str, Any]:
+        return {"type": "object"}
+
+    def call(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        # The Orchestrator handles the actual stopping logic based on this tool call being present.
+        # This function just returns the reason to confirm.
+        return {"status": "stopping", "reason": args.get("reason", "No reason provided")}

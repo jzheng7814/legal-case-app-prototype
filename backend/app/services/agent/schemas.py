@@ -65,10 +65,18 @@ class Snapshot(BaseModel):
 
 class OrchestratorAction(BaseModel):
     """
-    The structured decision output from the Orchestrator (LLM).
+    The structured decision output from the Orchestrator.
+    Choose exactly ONE of:
+    1. A 'tool_name' and 'tool_args' to execute a tool.
+    2. 'stop_decision'=True and a 'stop_reason' to finish the task.
     """
-    tool_name: Optional[str] = None
-    tool_args: Optional[Dict[str, Any]] = None
-    stop_decision: bool = False
-    stop_reason: Optional[str] = None
-    thought: Optional[str] = None # Reasoning
+    thought: str = Field(..., description="Brief reasoning for why this action was chosen.")
+    
+    # Tool Execution
+    tool_name: Optional[str] = Field(None, description="Name of the tool to execute. Required unless stopping.")
+    tool_args: Optional[Dict[str, Any]] = Field(None, description="Arguments for the tool. Required unless stopping.")
+    
+    # Stop condition
+    stop_decision: bool = Field(False, description="Set to True ONLY if all checklist items are extracted or no further actions are possible.")
+    stop_reason: Optional[str] = Field(None, description="Explanation for why the agent is stopping. Required if stop_decision is True.")
+

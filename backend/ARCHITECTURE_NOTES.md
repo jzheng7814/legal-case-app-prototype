@@ -40,6 +40,26 @@ FastAPI backend handling legal case summarization via a **Checklist-First RAG** 
 - `add_user_item(case_id, item_payload) -> EvidenceCollection`: Manually inserts user evidence.
 - `delete_user_item(case_id, item_id) -> EvidenceCollection`: Removes user evidence.
 
+### 🤖 `app.services.agent` (Agentic Extraction)
+**`AgentDriver`**
+- `run()`: Executes the extraction loop until `max_steps` or stop decision.
+- `_step()`: Builds snapshot -> gets action from Orchestrator -> executes Tool -> updates Ledger.
+
+**`Orchestrator`**
+- `decide_next_action(snapshot) -> ActionPlan`: Calls LLM with the formatted snapshot to choose the next tool.
+
+**`SnapshotBuilder`**
+- `build(step) -> Snapshot`: Aggregates:
+    -   **Task Progress**: What items are missing/filled.
+    -   **Document Catalog**: List of available files.
+    -   **Action History**: Summary of recent moves.
+    -   **Read Coverage**: Which parts of documents have been read.
+
+**`Tools`**
+- `ReadDocumentTool`: Reads a window of text (token-limited).
+- `SearchDocumentRegexTool`: fast keyword search.
+- `UpdateChecklistTool`: Writes extracted facts to the Store.
+
 ### 📄 `app.services.summary` (Summary Service)
 **Functions**
 - `start_summary_job(case_id, documents, instructions) -> SummaryJob`: Enqueues extraction + generation.
