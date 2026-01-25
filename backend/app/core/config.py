@@ -46,8 +46,16 @@ class ModelConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class AppRuntimeConfig(BaseModel):
+    event_log_dir: str = "logs"
+    event_log_prefix: str = "events"
+    ipc_socket_path: str = "/tmp/gavel_tool.sock"
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
 class AppConfig(BaseModel):
     model: ModelConfig
+    app: AppRuntimeConfig = Field(default_factory=AppRuntimeConfig)
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
@@ -79,6 +87,10 @@ class Settings(BaseSettings):
     @property
     def model(self) -> ModelConfig:
         return self.app_config.model
+
+    @property
+    def app(self) -> AppRuntimeConfig:
+        return self.app_config.app
 
     def resolve_openai_api_key(self) -> Optional[str]:
         configured = self.openai_api_key or (self.model.openai.api_key if self.model.openai else None)

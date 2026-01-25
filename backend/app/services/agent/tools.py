@@ -16,6 +16,50 @@ from app.services.checklists import get_checklist_definitions
 from app.services.agent.tokenizer import TokenizerWrapper
 
 
+def _validate_patch_payload(patches: Any) -> List[str]:
+    errors: List[str] = []
+    if not isinstance(patches, list) or not patches:
+        return ["Patch must be a non-empty array."]
+
+    for idx, patch in enumerate(patches):
+        if not isinstance(patch, dict):
+            errors.append(f"Patch {idx} must be an object.")
+            continue
+        key = patch.get("key")
+        if not isinstance(key, str) or not key.strip():
+            errors.append(f"Patch {idx} missing valid key.")
+        extracted = patch.get("extracted")
+        if not isinstance(extracted, list) or not extracted:
+            errors.append(f"Patch {idx} must include a non-empty extracted list.")
+            continue
+        for eidx, entry in enumerate(extracted):
+            if not isinstance(entry, dict):
+                errors.append(f"Patch {idx} extracted[{eidx}] must be an object.")
+                continue
+            value = entry.get("value")
+            if not isinstance(value, str):
+                errors.append(f"Patch {idx} extracted[{eidx}] missing string value.")
+            evidence_list = entry.get("evidence")
+            if not isinstance(evidence_list, list) or not evidence_list:
+                errors.append(f"Patch {idx} extracted[{eidx}] must include non-empty evidence list.")
+                continue
+            for vidx, ev in enumerate(evidence_list):
+                if not isinstance(ev, dict):
+                    errors.append(f"Patch {idx} extracted[{eidx}] evidence[{vidx}] must be an object.")
+                    continue
+                text = ev.get("text")
+                source_document = ev.get("source_document")
+                location = ev.get("location")
+                if not isinstance(text, str) or not text.strip():
+                    errors.append(f"Patch {idx} extracted[{eidx}] evidence[{vidx}] missing text.")
+                if not isinstance(source_document, int) or source_document < 0:
+                    errors.append(f"Patch {idx} extracted[{eidx}] evidence[{vidx}] source_document must be a non-negative int.")
+                if not isinstance(location, str) or not location.strip():
+                    errors.append(f"Patch {idx} extracted[{eidx}] evidence[{vidx}] missing location.")
+
+    return errors
+
+
 class BaseTool(ABC):
     """
     Abstract base class for all tools in the legal agent system.
@@ -112,7 +156,20 @@ class ListDocumentsTool(BaseTool):
                             "document_id": {"type": "integer"},
                             "title": {"type": "string"},
                             "type": {"type": "string"},
-                            "token_count": {"type": "integer"}
+                            "token_count": {"type": "integer"},
+                            "visited": {"type": "boolean"},
+                            "coverage": {
+                                "type": "object",
+                                "properties": {
+                                    "token_ranges": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "array",
+                                            "items": {"type": "integer"}
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -131,12 +188,19 @@ class ListDocumentsTool(BaseTool):
                 # Using tokenizer from context
                 text = doc.content or ""
                 token_count = self.tokenizer.count_tokens(text) if self.tokenizer else len(text.split())
+                visited = False
+                coverage = []
+                if self.ledger:
+                    visited = doc.id in self.ledger.get_visited_documents()
+                    coverage = self.ledger.get_document_coverage(doc.id)
                 
                 results.append({
                     "document_id": doc.id,
                     "title": doc.title or f"Document {doc.id}",
                     "type": doc.type,
                     "token_count": token_count,
+                    "visited": visited,
+                    "coverage": {"token_ranges": coverage},
                     "description": doc.description
                 })
             
@@ -159,11 +223,11 @@ class ReadDocumentTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "doc_name": {"type": "string", "description": "Name or ID of the document to read"},
+                "doc_id": {"type": "integer", "description": "ID of the document to read"},
                 "start_token": {"type": "integer"},
                 "end_token": {"type": "integer"}
             },
-            "required": ["doc_name", "start_token", "end_token"]
+            "required": ["doc_id", "start_token", "end_token"]
         }
 
     def get_output_schema(self) -> Dict[str, Any]:
@@ -171,7 +235,7 @@ class ReadDocumentTool(BaseTool):
             "type": "object",
             "properties": {
                 "text": {"type": "string"},
-                "doc_name": {"type": "string"},
+                "doc_id": {"type": "integer"},
                 "start_token": {"type": "integer"},
                 "end_token": {"type": "integer"},
                 "error": {"type": "string"}
@@ -181,41 +245,17 @@ class ReadDocumentTool(BaseTool):
     def call(self, args: Dict[str, Any]) -> Dict[str, Any]:
         if not self.case_id:
             return {"error": "Framework error: case_id not set"}
-            
-        doc_name = args.get("doc_name")
+
+        doc_id = args.get("doc_id")
         start_token = args.get("start_token", 0)
         end_token = args.get("end_token", 0)
-        
-        # Resolve doc_name to ID
-        # Simplification: Fetch all docs to find by title or ID
-        # Optimization: documents service get_document expects ID, but we have helper for list.
+
         try:
             docs = list_cached_documents(self.case_id)
-            target_doc = None
-            
-            # Try matching by exact ID if integer
-            try:
-                doc_id_int = int(doc_name)
-                target_doc = next((d for d in docs if d.id == doc_id_int), None)
-            except ValueError:
-                pass # Not an integer ID
-            
+            target_doc = next((d for d in docs if d.id == doc_id), None)
             if not target_doc:
-                 # Match by title
-                target_doc = next((d for d in docs if (d.title or "").strip() == str(doc_name).strip()), None)
-            
-            if not target_doc:
-                # Fuzzy ID match "Document X"
-                if str(doc_name).startswith("Document "):
-                    try:
-                        doc_id = int(str(doc_name).replace("Document ", ""))
-                        target_doc = next((d for d in docs if d.id == doc_id), None)
-                    except ValueError:
-                        pass
+                return {"error": f"Document id '{doc_id}' not found."}
 
-            if not target_doc:
-                return {"error": f"Document '{doc_name}' not found."}
-            
             text = target_doc.content or ""
             
             # Tokenize and extract range
@@ -234,7 +274,7 @@ class ReadDocumentTool(BaseTool):
 
             return {
                 "text": sub_text,
-                "doc_name": target_doc.title or f"Document {target_doc.id}",
+                "doc_id": target_doc.id,
                 "start_token": actual_start,
                 "end_token": actual_end,
                 "total_tokens": self.tokenizer.count_tokens(text) if self.tokenizer else len(text.split())
@@ -256,7 +296,9 @@ class SearchDocumentRegexTool(BaseTool):
             "type": "object",
             "properties": {
                 "pattern": {"type": "string"},
-                "doc_name": {"type": "string", "description": "'all' or specific document name"},
+                "doc_id": {"type": "integer", "description": "Single document ID or -1 for all documents"},
+                "doc_ids": {"type": "array", "items": {"type": "integer"}, "description": "Array of document IDs to search"},
+                "flags": {"type": "array", "items": {"type": "string"}, "default": []},
                 "context_tokens": {"type": "integer", "default": 200},
                 "top_k": {"type": "integer", "default": 5}
             },
@@ -268,69 +310,96 @@ class SearchDocumentRegexTool(BaseTool):
 
     def call(self, args: Dict[str, Any]) -> Dict[str, Any]:
         pattern = args.get("pattern")
-        doc_name = args.get("doc_name", "all")
+        doc_id = args.get("doc_id")
+        doc_ids = args.get("doc_ids") or []
+        flags = args.get("flags", [])
         context_tokens = args.get("context_tokens", 200)
         top_k = args.get("top_k", 5)
         
         try:
-            regex = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+            regex_flags = 0
+            for flag in flags:
+                if flag == "IGNORECASE":
+                    regex_flags |= re.IGNORECASE
+                elif flag == "MULTILINE":
+                    regex_flags |= re.MULTILINE
+                elif flag == "DOTALL":
+                    regex_flags |= re.DOTALL
+            regex = re.compile(pattern, regex_flags)
         except re.error as e:
             return {"error": f"Invalid regex: {e}"}
 
         try:
             docs = list_cached_documents(self.case_id)
             targets = []
-            if doc_name.lower() == "all":
+            if doc_ids:
+                targets = [d for d in docs if d.id in doc_ids]
+            elif doc_id == -1:
                 targets = docs
+            elif doc_id is not None:
+                targets = [d for d in docs if d.id == doc_id]
             else:
-                # Same resolution logic as ReadDocument
-                 # Try matching by exact ID if integer
-                try:
-                    doc_id_int = int(doc_name)
-                    t = next((d for d in docs if d.id == doc_id_int), None)
-                    if t: targets.append(t)
-                except ValueError:
-                    # Title matches
-                    t = next((d for d in docs if (d.title or "") == doc_name), None)
-                    if t: targets.append(t)
-            
+                return {"error": "doc_id or doc_ids is required (use doc_id=-1 for all documents)."}
+
             if not targets:
-                return {"error": f"No documents found for search target '{doc_name}'"}
+                return {"error": "No documents found for the requested search target(s)."}
 
             results = []
+            total_matches = 0
+            documents_searched = []
             
             for doc in targets:
                 text = doc.content or ""
                 matches = list(regex.finditer(text))
-                
+                documents_searched.append(doc.id)
+
                 doc_matches = []
                 for m in matches[:top_k]:
                     start_char, end_char = m.span()
-                    
-                    # Get context window (approximation using characters if tokenizer slow, or tokenizer)
-                    # For speed, let's use character approximation: 1 token ~ 4 chars
-                    ctx_chars = context_tokens * 4
-                    ctx_start = max(0, start_char - ctx_chars)
-                    ctx_end = min(len(text), end_char + ctx_chars)
-                    snippet = text[ctx_start:ctx_end]
-                    
-                    # Convert chars to estimated token positions for the agent
-                    # This is rough but necessary.
-                    # Or use tokenizer.token_to_char_positions reverse map? Too expensive.
-                    # Just return text snippet.
+                    if self.tokenizer:
+                        tokens = self.tokenizer.encode(text)
+                        approx_token = int((start_char / max(len(text), 1)) * len(tokens)) if tokens else 0
+                        context_start = max(0, approx_token - context_tokens // 2)
+                        context_end = min(len(tokens), approx_token + context_tokens // 2)
+                        snippet, _, _ = self.tokenizer.get_text_for_token_range(text, context_start, context_end)
+                        start_token = context_start
+                        end_token = context_end
+                    else:
+                        ctx_chars = context_tokens * 4
+                        ctx_start = max(0, start_char - ctx_chars)
+                        ctx_end = min(len(text), end_char + ctx_chars)
+                        snippet = text[ctx_start:ctx_end]
+                        start_token = 0
+                        end_token = 0
+
                     doc_matches.append({
-                        "match_text": m.group(),
-                        "context": snippet,
-                        "char_offset": start_char
+                        "start_token": start_token,
+                        "end_token": end_token,
+                        "start_char": start_char,
+                        "end_char": end_char,
+                        "snippet": snippet,
+                        "groups": m.groupdict(),
+                        "pattern": pattern,
+                        "flags": flags
                     })
                 
                 if doc_matches:
+                    total_matches += len(doc_matches)
                     results.append({
-                        "doc_name": doc.title or f"Document {doc.id}",
+                        "doc_id": doc.id,
+                        "match_count": len(doc_matches),
                         "matches": doc_matches
                     })
-            
-            return {"results": results}
+
+            if self.ledger:
+                self.ledger.record_search([d.id for d in targets], pattern)
+
+            return {
+                "pattern": pattern,
+                "documents_searched": documents_searched,
+                "results": results,
+                "total_matches": total_matches
+            }
 
         except Exception as e:
             return {"error": str(e)}
@@ -391,8 +460,9 @@ class GetChecklistTool(BaseTool):
         for key in target_keys:
             if key not in extracted:
                 extracted[key] = [] # Empty list implies not extracted yet
-        
-        return {"checklist": extracted}
+
+        completion_stats = self.store.get_completion_stats() if hasattr(self.store, "get_completion_stats") else {}
+        return {"checklist": extracted, "completion_stats": completion_stats}
 
 
 class UpdateChecklistTool(BaseTool):
@@ -412,7 +482,28 @@ class UpdateChecklistTool(BaseTool):
                         "type": "object",
                         "properties": {
                             "key": {"type": "string"},
-                            "extracted": {"type": "array"} # items with evidence
+                            "extracted": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "evidence": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "text": {"type": "string"},
+                                                    "source_document": {"type": "integer"},
+                                                    "location": {"type": "string"},
+                                                },
+                                                "required": ["text", "source_document", "location"],
+                                            },
+                                        },
+                                        "value": {"type": "string"},
+                                    },
+                                    "required": ["evidence", "value"],
+                                },
+                            },
                         },
                         "required": ["key", "extracted"]
                     }
@@ -433,61 +524,25 @@ class UpdateChecklistTool(BaseTool):
         patches = args.get("patch", [])
         updated_keys = []
         errors = []
-        
-        # Helper to resolve doc IDs
-        try:
-             docs = list_cached_documents(self.case_id)
-        except Exception:
-             docs = []
-             
-        def resolve_doc_id(doc_name_or_id: Union[str, int]) -> int:
-             # If already int or digit string
-             if isinstance(doc_name_or_id, int):
-                 return doc_name_or_id
-             if str(doc_name_or_id).isdigit():
-                 return int(doc_name_or_id)
-             
-             # Name match
-             # Exact title match
-             found = next((d for d in docs if (d.title or "") == str(doc_name_or_id)), None)
-             if found: return int(found.id)
-             
-             # Fuzzy "Document X"
-             if str(doc_name_or_id).startswith("Document "):
-                 try:
-                     return int(str(doc_name_or_id).replace("Document ", ""))
-                 except:
-                     pass
-             
-             # Fallback: maintain original logic (likely fail or let store handle)
-             # But user wants strict INT. Return -1 or error?
-             # Let's return -1 if not found, store will handle/warn.
-             return -1
+
+        validation_errors = _validate_patch_payload(patches)
+        if validation_errors:
+            return {"updated_keys": [], "validation_errors": validation_errors, "success": False}
 
         for p in patches:
             key = p.get("key")
             items = p.get("extracted", [])
-            
-            # Resolve document IDs in evidence
-            for item in items:
-                evidence_list = item.get("evidence", [])
-                if isinstance(evidence_list, dict):
-                    evidence_list = [evidence_list]
-                
-                for ev in evidence_list:
-                    raw_doc = ev.get("source_document")
-                    if raw_doc is not None:
-                        ev["source_document"] = resolve_doc_id(raw_doc)
-
             try:
-                # Convert raw Dict items to EvidenceItem (or internal equivalent)
-                # Validation logic here?
                 self.store.update_key(key, items)
                 updated_keys.append(key)
             except Exception as e:
                 errors.append(f"Failed to update {key}: {e}")
 
-        return {"updated_keys": updated_keys, "errors": errors}
+        success = len(errors) == 0
+        if not success:
+            return {"updated_keys": updated_keys, "validation_errors": errors, "success": False}
+
+        return {"updated_keys": updated_keys, "validation_errors": [], "success": True}
 
 class AppendChecklistTool(BaseTool):
     def __init__(self):
@@ -506,7 +561,28 @@ class AppendChecklistTool(BaseTool):
                          "type": "object",
                          "properties": {
                             "key": {"type": "string"},
-                            "extracted": {"type": "array"}
+                            "extracted": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "evidence": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "text": {"type": "string"},
+                                                    "source_document": {"type": "integer"},
+                                                    "location": {"type": "string"},
+                                                },
+                                                "required": ["text", "source_document", "location"],
+                                            },
+                                        },
+                                        "value": {"type": "string"},
+                                    },
+                                    "required": ["evidence", "value"],
+                                },
+                            }
                          },
                          "required": ["key", "extracted"]
                     }
@@ -527,47 +603,25 @@ class AppendChecklistTool(BaseTool):
         patches = args.get("patch", [])
         updated_keys = []
         errors = []
-        
-        # Helper to resolve doc IDs (Duplicated for now, could move to shared helper)
-        try:
-             docs = list_cached_documents(self.case_id)
-        except Exception:
-             docs = []
-             
-        def resolve_doc_id(doc_name_or_id: Union[str, int]) -> int:
-             if isinstance(doc_name_or_id, int): return doc_name_or_id
-             if str(doc_name_or_id).isdigit(): return int(doc_name_or_id)
-             found = next((d for d in docs if (d.title or "") == str(doc_name_or_id)), None)
-             if found: return int(found.id)
-             if str(doc_name_or_id).startswith("Document "):
-                 try:
-                     return int(str(doc_name_or_id).replace("Document ", ""))
-                 except:
-                     pass
-             return -1
+
+        validation_errors = _validate_patch_payload(patches)
+        if validation_errors:
+            return {"updated_keys": [], "validation_errors": validation_errors, "success": False}
 
         for p in patches:
             key = p.get("key")
             items = p.get("extracted", [])
-            
-            # Resolve document IDs in evidence
-            for item in items:
-                evidence_list = item.get("evidence", [])
-                if isinstance(evidence_list, dict):
-                    evidence_list = [evidence_list]
-                
-                for ev in evidence_list:
-                    raw_doc = ev.get("source_document")
-                    if raw_doc is not None:
-                         ev["source_document"] = resolve_doc_id(raw_doc)
-
             try:
                 self.store.append_to_key(key, items)
                 updated_keys.append(key)
             except Exception as e:
                 errors.append(f"Failed to append {key}: {e}")
 
-        return {"updated_keys": updated_keys, "errors": errors}
+        success = len(errors) == 0
+        if not success:
+            return {"updated_keys": updated_keys, "validation_errors": errors, "success": False}
+
+        return {"updated_keys": updated_keys, "validation_errors": [], "success": True}
 
 
 from pydantic import Field

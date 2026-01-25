@@ -1,15 +1,15 @@
-import logging
 from typing import List
 
 from fastapi import APIRouter
 
+from app.eventing import get_event_producer
 from app.schemas.checklists import EvidenceCategoryCollection, ChecklistItemCreateRequest, ChecklistStatusResponse
 from app.schemas.documents import DocumentReference
 from app.services import checklists as checklist_service
 from app.services.documents import list_documents, list_cached_documents
 
 router = APIRouter(prefix="/cases", tags=["checklists"])
-logger = logging.getLogger(__name__)
+producer = get_event_producer(__name__)
 
 
 def _build_document_references(case_id: str) -> List[DocumentReference]:
@@ -72,7 +72,7 @@ async def get_checklist_status(case_id: str) -> ChecklistStatusResponse:
     try:
         cached = await checklist_service.get_document_checklists_if_cached(case_id, document_refs)
     except Exception:  # pylint: disable=broad-except
-        logger.exception("Failed to check checklist status for case %s", case_id)
+        producer.error("Failed to check checklist status", {"case_id": case_id})
         return ChecklistStatusResponse(checklist_status="error", document_checklists=None)
 
     if cached is not None:

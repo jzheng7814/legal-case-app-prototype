@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 import json
-import logging
 import time
 from typing import Any, Dict, Iterable, List, Optional
 
 import httpx
 
-from app.logging_utils import configure_file_logger
+from app.eventing import get_event_producer
 from app.schemas.documents import Document
 
-logger = logging.getLogger(__name__)
-_file_logger = configure_file_logger("app.services.clearinghouse.file", prefix="clearinghouse")
+producer = get_event_producer(__name__)
 
 _INLINE_PAYLOAD_LIMIT = 10_000
 _PAYLOAD_PREVIEW_LIMIT = 4_000
@@ -58,7 +56,7 @@ def _count_results(payload: Any) -> Optional[int]:
 
 
 def _log_file(record: Dict[str, Any]) -> None:
-    _file_logger.info(_safe_json_dump(record))
+    producer.debug("Clearinghouse log record", {"record": record})
 
 _API_BASE_URL = "https://clearinghouse.net/api/v2p1"
 _DEFAULT_TIMEOUT_SECONDS = 30.0
@@ -98,7 +96,10 @@ class ClearinghouseClient:
             try:
                 documents.append(self._convert_document(raw_doc, case_title))
             except Exception:  # pylint: disable=broad-except
-                logger.exception("Failed to convert Clearinghouse document %s for case %s", raw_doc.get("id"), case_id)
+                producer.error(
+                    "Failed to convert Clearinghouse document",
+                    {"case_id": case_id, "document_id": raw_doc.get("id")},
+                )
 
         if main_docket:
             try:
@@ -106,10 +107,9 @@ class ClearinghouseClient:
                 if docket_document is not None:
                     documents.append(docket_document)
             except Exception:  # pylint: disable=broad-except
-                logger.exception(
-                    "Failed to convert Clearinghouse docket %s for case %s",
-                    main_docket.get("id"),
-                    case_id,
+                producer.error(
+                    "Failed to convert Clearinghouse docket",
+                    {"case_id": case_id, "document_id": main_docket.get("id")},
                 )
 
         _log_file(
@@ -291,7 +291,10 @@ class ClearinghouseClient:
         # Check if we need to fetch text separately
         text_url = raw.get("text_url")
         if not raw.get("text") and text_url:
-            logger.info("Fetching full text for document %s from %s", document_id, text_url)
+            producer.info(
+                "Fetching full text for document",
+                {"document_id": document_id, "url": text_url},
+            )
             fetched_text = self._fetch_full_text(text_url)
             if fetched_text:
                 raw["text"] = fetched_text

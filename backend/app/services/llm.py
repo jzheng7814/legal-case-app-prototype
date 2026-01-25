@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional
@@ -12,10 +11,9 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import Settings, get_settings
-from app.logging_utils import configure_file_logger
+from app.eventing import EventVisibility, get_event_producer
 
-logger = logging.getLogger(__name__)
-_file_logger = configure_file_logger("app.services.llm.file", prefix="llm")
+producer = get_event_producer(__name__)
 
 
 @dataclass
@@ -48,13 +46,6 @@ class LLMToolHandlerResult:
 
 def _strip_reasoning_tokens(text: str) -> str:
     return re.sub(r"<think>.*?</think>\n?", "", text, flags=re.DOTALL)
-
-
-def _safe_json_dump(payload: Any) -> str:
-    try:
-        return json.dumps(payload, ensure_ascii=False, default=str)
-    except (TypeError, ValueError):
-        return str(payload)
 
 
 def _schema_from_model(model: type[BaseModel]) -> str:
@@ -126,6 +117,7 @@ class OllamaBackend(LLMBackend):
         return {
             "temperature": self._defaults.temperature,
             "num_predict": self._defaults.max_output_tokens,
+            "num_ctx": 32768,
         }
 
     async def generate_response(
@@ -176,7 +168,7 @@ class OllamaBackend(LLMBackend):
         try:
             return response_model.model_validate_json(result.text)
         except (ValidationError, ValueError) as exc:
-            logger.warning("Ollama structured parsing failed: %s", exc)
+            producer.warning("Ollama structured parsing failed", {"error": str(exc)})
             raise
 
     async def chat(
@@ -306,19 +298,22 @@ class OpenAIBackend(LLMBackend):
             },
             text_format=response_model,
         )
-        _file_logger.info(_safe_json_dump({
-            "operation": "openai.generate_structured.response",
-            "response": response.model_dump(),
-        }))
+        producer.debug(
+            "OpenAI structured response",
+            {
+                "operation": "openai.generate_structured.response",
+                "response": response.model_dump(),
+            },
+        )
         parsed = getattr(response, "output_parsed", None)
         if parsed is None:
-            logger.warning("OpenAI structured output missing parsed payload")
+            producer.warning("OpenAI structured output missing parsed payload")
             raise ValueError("Structured output did not produce parsed content")
         if not isinstance(parsed, response_model):
             try:
                 return response_model.model_validate(parsed)
             except ValidationError as exc:
-                logger.warning("OpenAI structured output validation failed: %s", exc)
+                producer.warning("OpenAI structured output validation failed", {"error": str(exc)})
                 raise
         return parsed
 
@@ -531,8 +526,8 @@ class LLMService:
         if preview:
             metadata["prompt_preview"] = preview
 
-        if logger.isEnabledFor(logging.INFO):
-            logger.info("Dispatching LLM request: %s", metadata)
+        if producer.is_enabled(EventVisibility.INFO):
+            producer.info("Dispatching LLM request", metadata)
 
         file_record = {
             "operation": operation,
@@ -541,7 +536,7 @@ class LLMService:
             "model": metadata["model"],
             "request": request_payload if request_payload is not None else {"prompt": prompt_text},
         }
-        _file_logger.info(_safe_json_dump(file_record))
+        producer.debug("LLM request record", file_record)
 
     def _log_response(self, operation: str, raw: Any) -> None:
         if raw is None:
@@ -550,7 +545,7 @@ class LLMService:
             "operation": operation,
             "response": raw,
         }
-        _file_logger.info(_safe_json_dump(file_record))
+        producer.debug("LLM response record", file_record)
 
     async def generate_text(
         self,

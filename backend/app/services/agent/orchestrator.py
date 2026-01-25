@@ -4,43 +4,61 @@ Decides the next action based on the Snapshot using Native Tool Calling.
 """
 
 import json
-import logging
 from typing import Dict, Any, List, Optional
-from pydantic import ValidationError
+from pathlib import Path
 
+import yaml
+
+from app.eventing import get_event_producer
 from app.services.llm import llm_service, LLMMessage, LLMResult
 from app.services.agent.schemas import Snapshot, OrchestratorAction
 from app.services.agent.tools import BaseTool, StopTool
 
-logger = logging.getLogger(__name__)
+producer = get_event_producer(__name__)
 
 class Orchestrator:
-    def __init__(self, model_name: str = "gpt-4o"):
+    def __init__(self, model_name: str = "gpt-4o", config_dir: Optional[Path] = None):
         self.model_name = model_name
         self._tools: Dict[str, BaseTool] = {}
-        
-        # Always register the StopTool implicitly or explicitly
+
         self._stop_tool = StopTool()
-    
+        self.config_dir = Path(config_dir) if config_dir else Path(__file__).parent / "config"
+        self.system_prompt = ""
+        self.tool_definitions: Optional[List[Dict[str, Any]]] = None
+        self._load_config()
+
     def register_tool(self, tool: BaseTool):
         self._tools[tool.name] = tool
 
     def _build_system_prompt(self, snapshot: Snapshot) -> str:
-        # Load prompt from file
-        from pathlib import Path
+        if self.system_prompt:
+            return self.system_prompt
+
         prompt_path = Path(__file__).parent / "prompts" / "default_system_prompt.md"
         try:
-             base_prompt = prompt_path.read_text()
+            base_prompt = prompt_path.read_text(encoding="utf-8")
         except Exception:
-             logger.warning("Could not load system prompt from file, using fallback.")
-             base_prompt = "You are a document extraction agent. Extract the checklist items. Use the provided tools."
+            producer.warning("Could not load system prompt; using fallback", {"path": str(prompt_path)})
+            base_prompt = "You are a document extraction agent. Extract the checklist items. Use the provided tools."
 
-        # The prompt template no longer needs {tool_list}
-        # If there are any residual formatting keys, handle gracefully
         try:
             return base_prompt.format(tool_list="")
         except Exception:
             return base_prompt
+
+    def _load_config(self) -> None:
+        prompts_file = self.config_dir / "prompts_qwen.yaml"
+        if not prompts_file.exists():
+            producer.warning("Prompts config not found", {"path": str(prompts_file)})
+            return
+
+        try:
+            with prompts_file.open("r", encoding="utf-8") as infile:
+                prompts = yaml.safe_load(infile) or {}
+            self.system_prompt = prompts.get("system_prompt", "") or ""
+            self.tool_definitions = prompts.get("tool_definitions")
+        except Exception:
+            producer.error("Failed to load prompts config", {"path": str(prompts_file)})
 
     def _convert_to_tool_schema(self, tool: BaseTool) -> Dict[str, Any]:
         """
@@ -62,13 +80,16 @@ class Orchestrator:
         system_prompt = self._build_system_prompt(snapshot)
         
         # Prepare tools
-        # Include all registered tools + StopTool
         all_tools = list(self._tools.values())
-        # Ensure StopTool is present if not already (though usually handled distinct)
         if "stop_task" not in self._tools:
             all_tools.append(self._stop_tool)
-            
-        tool_schemas = [self._convert_to_tool_schema(t) for t in all_tools]
+
+        if self.tool_definitions:
+            tool_schemas = list(self.tool_definitions)
+            if not any(tool.get("function", {}).get("name") == "stop_task" for tool in tool_schemas):
+                tool_schemas.append(self._convert_to_tool_schema(self._stop_tool))
+        else:
+            tool_schemas = [self._convert_to_tool_schema(t) for t in all_tools]
         
         # User message is the formatted snapshot
         messages = [LLMMessage(role="user", content=formatted_prompt)]
@@ -127,7 +148,7 @@ class Orchestrator:
             )
             
         except Exception as e:
-            logger.exception("Orchestrator error")
+            producer.error("Orchestrator error", {"error": str(e)})
             return OrchestratorAction(
                 thought=f"Error during decision making: {str(e)}",
                 stop_decision=False,

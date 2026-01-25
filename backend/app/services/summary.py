@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import uuid
 import textwrap
 from typing import Dict, List, Optional
 
 from fastapi import BackgroundTasks, HTTPException
 
+from app.eventing import get_event_producer
 from app.schemas.checklists import EvidenceCollection, EvidenceItem
 from app.schemas.documents import DocumentReference
 from app.schemas.summary import SummaryJob, SummaryJobStatus, SummaryRequest
@@ -15,7 +15,7 @@ from app.services.checklists import extract_document_checklists
 from app.services.documents import get_document
 from app.services.llm import llm_service
 
-logger = logging.getLogger(__name__)
+producer = get_event_producer(__name__)
 
 _summary_jobs: Dict[str, SummaryJob] = {}
 _summary_jobs_lock = asyncio.Lock()
@@ -94,7 +94,10 @@ async def _run_summary_job(job_id: str, case_id: str, request: SummaryRequest) -
     except HTTPException:
         raise
     except Exception as exc:  # pylint: disable=broad-except
-        logger.exception("Failed to execute summary job %s", job_id)
+        producer.error(
+            "Summary job failed",
+            {"job_id": job_id, "error": str(exc)},
+        )
         await _update_job(job_id, status=SummaryJobStatus.failed, error=str(exc))
 
 

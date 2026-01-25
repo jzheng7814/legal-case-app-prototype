@@ -2,10 +2,11 @@
 State management for the agent (Checklist Store and Action Ledger).
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 from pydantic import BaseModel
 
+from app.eventing import get_event_producer
 from app.schemas.checklists import EvidenceCollection, EvidenceItem, EvidencePointer
 from app.services.checklists import get_checklist_definitions
 
@@ -13,12 +14,25 @@ class AgentChecklistStore:
     """
     In-memory store for the agent's extraction progress.
     """
-    def __init__(self):
+    def __init__(self, checklist_config: Optional[Dict[str, Any]] = None):
         self._items: List[EvidenceItem] = []
-        self._definitions = get_checklist_definitions()
+        self._definitions = self._load_definitions(checklist_config)
+        self._last_updated: Dict[str, datetime] = {}
+        self._producer = get_event_producer(__name__)
+
+    def _load_definitions(self, checklist_config: Optional[Dict[str, Any]]) -> Dict[str, str]:
+        if checklist_config:
+            return {
+                key: (value.get("description") if isinstance(value, dict) else "")
+                for key, value in checklist_config.items()
+            }
+        return get_checklist_definitions()
     
     def get_current_collection(self) -> EvidenceCollection:
         return EvidenceCollection(items=self._items)
+
+    def get_definitions(self) -> Dict[str, str]:
+        return dict(self._definitions)
     
     def update_key(self, key: str, items: List[Dict[str, Any]]):
         """
@@ -30,6 +44,12 @@ class AgentChecklistStore:
         # Add new items
         for item_data in items:
             self._add_item(key, item_data)
+
+        self._last_updated[key] = datetime.now()
+        self._producer.debug(
+            "Checklist updated",
+            {"action": "update", "key": key, "items": items, "count": len(items)},
+        )
             
     def append_to_key(self, key: str, items: List[Dict[str, Any]]):
         """
@@ -37,6 +57,12 @@ class AgentChecklistStore:
         """
         for item_data in items:
             self._add_item(key, item_data)
+
+        self._last_updated[key] = datetime.now()
+        self._producer.debug(
+            "Checklist updated",
+            {"action": "append", "key": key, "items": items, "count": len(items)},
+        )
             
     def _add_item(self, key: str, item_data: Dict[str, Any]):
         value = item_data.get("value")
@@ -53,46 +79,16 @@ class AgentChecklistStore:
         evidence_list = evidence_data if isinstance(evidence_data, list) else [evidence_data]
         
         for ev in evidence_list:
-            # Need to map tool evidence format to EvidencePointer
-            # Tool: text, source_document, location
-            # Pointer: document_id, start_offset, end_offset, text, verified
-            
-            # We assume the driver/tool logic has already resolved document names to IDs?
-            # Actually UpdateChecklistTool passes raw dicts. We need to resolve them here or in Tool.
-            # To keep Store simple, let's assume Tool passes semi-resolved data or we handle "text only" evidence.
-            # But wait, EvidencePointer REQUIRES document_id (int).
-            # The tool gets "source_document" which is a string (name).
-            # Limitation: The Store needs to map doc name to ID if not already done.
-            # Ideally, the Tool should resolve this since it has access to context/tokenizer.
-            
-            # Let's fix `tools.py` later to resolve doc IDs? 
-            # OR, we make EvidencePointer optional in `EvidenceItem`? No, it's strict.
-            # We'll assume for now `source_document` contains the ID or we can parse it.
-            # But `tools.py` schema says "source_document" (string).
-            
-            # source_document should be an integer ID (resolved by Tool)
-            # We strictly parse it as int.
-            doc_id = -1
-            src = ev.get("source_document")
-            
-            if isinstance(src, int):
-                doc_id = src
-            elif isinstance(src, str) and src.isdigit():
-                doc_id = int(src)
-            else:
-                 # Fallback/Error state if tool failed to resolve
-                 # We keep it as -1 which indicates "unknown document"
-                 pass
-            
-            # Create object
+            doc_id = ev.get("source_document")
             pointer = EvidencePointer(
-                document_id=doc_id,
+                document_id=int(doc_id),
+                location=ev.get("location"),
                 text=ev.get("text"),
-                start_offset=None, # Agent tools typically don't give exact offsets unless explicitly read
-                end_offset=None,
-                verified=True # Agent extracted
+                start_offset=0,
+                end_offset=0,
+                verified=True,
             )
-            
+
             self._items.append(EvidenceItem(
                 bin_id=key,
                 value=value,
@@ -108,6 +104,13 @@ class AgentChecklistStore:
             "empty": total - len(filled)
         }
 
+    def get_empty_keys(self) -> List[str]:
+        filled = set(i.bin_id for i in self._items)
+        return [key for key in self._definitions.keys() if key not in filled]
+
+    def get_last_updated(self) -> Dict[str, datetime]:
+        return dict(self._last_updated)
+
 
 class Ledger:
     """
@@ -116,6 +119,8 @@ class Ledger:
     def __init__(self):
         self.history: List[Dict[str, Any]] = []
         self.read_history: List[Dict[str, Any]] = [] # (doc_id, start, end)
+        self.search_history: List[Dict[str, Any]] = []
+        self._documents_discovered: bool = False
 
     def record_action(self, step: int, tool_name: str, args: Dict, result: Any):
         self.history.append({
@@ -133,8 +138,30 @@ class Ledger:
             "end": end
         })
 
+    def record_search(self, doc_ids: List[int], pattern: str):
+        self.search_history.append({
+            "doc_ids": doc_ids,
+            "pattern": pattern
+        })
+
+    def mark_documents_discovered(self):
+        self._documents_discovered = True
+
+    def documents_discovered(self) -> bool:
+        return self._documents_discovered
+
     def get_recent_history(self, n: int = 5) -> List[Dict[str, Any]]:
         return self.history[-n:]
 
     def get_read_coverage(self) -> List[Dict[str, Any]]:
         return self.read_history
+
+    def get_visited_documents(self) -> List[int]:
+        return list({entry["doc_id"] for entry in self.read_history})
+
+    def get_document_coverage(self, doc_id: int) -> List[List[int]]:
+        return [
+            [entry["start"], entry["end"]]
+            for entry in self.read_history
+            if entry["doc_id"] == doc_id
+        ]

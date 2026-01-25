@@ -1,16 +1,16 @@
 import asyncio
-import logging
 from typing import Dict, Optional
 
 from fastapi import APIRouter
 
+from app.eventing import get_event_producer
 from app.schemas.documents import DocumentListResponse, DocumentReference
 from app.schemas.checklists import EvidenceCollection
 from app.services.checklists import extract_document_checklists, get_document_checklists_if_cached
 from app.services.documents import list_documents
 
 router = APIRouter(prefix="/cases", tags=["cases"])
-logger = logging.getLogger(__name__)
+producer = get_event_producer(__name__)
 
 _PREFETCH_TASKS: Dict[str, asyncio.Task] = {}
 _PREFETCH_LOCK = asyncio.Lock()
@@ -38,7 +38,7 @@ async def get_case_documents(case_id: str) -> DocumentListResponse:
         try:
             cached = await get_document_checklists_if_cached(case_id, document_refs)
         except Exception:  # pylint: disable=broad-except
-            logger.exception("Unable to inspect checklist cache for case %s", case_id)
+            producer.error("Unable to inspect checklist cache", {"case_id": case_id})
             cached = None
 
         if cached is not None:
@@ -68,7 +68,7 @@ async def _prefetch_document_checklists(case_id: str, references: list[DocumentR
     try:
         await extract_document_checklists(case_id, references)
     except Exception:  # pylint: disable=broad-except
-        logger.exception("Checklist prefetch failed for case %s", case_id)
+        producer.error("Checklist prefetch failed", {"case_id": case_id})
     finally:
         async with _PREFETCH_LOCK:
             tracked = _PREFETCH_TASKS.get(case_id)

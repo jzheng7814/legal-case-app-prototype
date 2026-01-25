@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 class Evidence(BaseModel):
     text: str
-    source_document: str
+    source_document: int
     location: Optional[str] = None
     
 class ExtractedValue(BaseModel):
@@ -23,6 +23,7 @@ class DocumentCoverage(BaseModel):
     token_ranges: List[List[int]] = Field(default_factory=list) # List of [start, end]
 
 class DocumentInfo(BaseModel):
+    id: int
     name: str
     type: str = "document"
     token_count: int = 0
@@ -32,16 +33,21 @@ class DocumentInfo(BaseModel):
 class ActionRecord(BaseModel):
     step: int
     tool: str
-    target: Optional[Dict[str, Any]] = None # Arguments
-    result_summary: Optional[Dict[str, Any]] = None
+    target: Optional[Dict[str, Any]] = None
+    purpose: Optional[str] = None
+    changed_keys: Optional[List[str]] = None
+    timestamp: Optional[Any] = None
+    success: bool = True
     error: Optional[str] = None
     validation_errors: Optional[List[str]] = None
+    result_summary: Optional[Dict[str, Any]] = None
     auto_generated: bool = False
-    changed_keys: Optional[List[str]] = None # Helper for display
 
 class RunHeader(BaseModel):
     step: int
     case_id: str
+    run_id: Optional[str] = None
+    timestamp: Optional[Any] = None
 
 class TaskInfo(BaseModel):
     user_instruction: str
@@ -57,6 +63,9 @@ class Snapshot(BaseModel):
     checklist: List[ChecklistItem]
     documents: List[DocumentInfo]
     action_tail: List[ActionRecord] = Field(default_factory=list)
+    recent_evidence_headers: List[Evidence] = Field(default_factory=list)
+    last_tool_result: Optional[Dict[str, Any]] = None
+    last_tool_name: Optional[str] = None
     
     # Configuration/State flags
     recent_actions_detail: int = 5
@@ -79,4 +88,3 @@ class OrchestratorAction(BaseModel):
     # Stop condition
     stop_decision: bool = Field(False, description="Set to True ONLY if all checklist items are extracted or no further actions are possible.")
     stop_reason: Optional[str] = Field(None, description="Explanation for why the agent is stopping. Required if stop_decision is True.")
-

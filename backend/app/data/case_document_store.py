@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 from typing import Any, Dict, List, Optional, Protocol
 
-logger = logging.getLogger(__name__)
+from app.eventing import get_event_producer
+
+producer = get_event_producer(__name__)
 
 
 @dataclass(frozen=True)
@@ -52,10 +53,10 @@ class JsonCaseDocumentStore(CaseDocumentStore):
         case_title = raw_entry.get("case_title")
         stored_at = raw_entry.get("stored_at")
         if not isinstance(documents, list):
-            logger.debug("Cached document entry for case %s missing documents list.", key)
+            producer.debug("Cached document entry missing documents list", {"case_id": key})
             return None
         if not isinstance(case_title, str) or not case_title.strip():
-            logger.debug("Cached document entry for case %s missing case title.", key)
+            producer.debug("Cached document entry missing case title", {"case_id": key})
             return None
         return StoredCaseDocuments(
             documents=documents,
@@ -92,9 +93,15 @@ class JsonCaseDocumentStore(CaseDocumentStore):
             data = json.loads(self._file_path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 return data
-            logger.warning("Case document store %s did not contain an object. Resetting.", self._file_path)
+            producer.warning(
+                "Case document store did not contain an object; resetting",
+                {"path": str(self._file_path)},
+            )
         except (json.JSONDecodeError, OSError):
-            logger.exception("Failed to read case document store from %s. Resetting.", self._file_path)
+            producer.error(
+                "Failed to read case document store; resetting",
+                {"path": str(self._file_path)},
+            )
         return {}
 
     def _write(self, payload: Dict[str, Any]) -> None:
@@ -103,14 +110,17 @@ class JsonCaseDocumentStore(CaseDocumentStore):
             tmp_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
             tmp_path.replace(self._file_path)
         except OSError:
-            logger.exception("Failed to persist case document store to %s.", self._file_path)
+            producer.error("Failed to persist case document store", {"path": str(self._file_path)})
             raise
         finally:
             if tmp_path.exists():
                 try:
                     tmp_path.unlink()
                 except OSError:
-                    logger.warning("Unable to clean up temporary case document store file %s.", tmp_path)
+                    producer.warning(
+                        "Unable to clean up temporary case document store file",
+                        {"path": str(tmp_path)},
+                    )
 
 
 def _normalize_case_id(case_id: str) -> str:

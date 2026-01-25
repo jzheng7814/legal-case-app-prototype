@@ -16,5 +16,10 @@
       "response_model": "qwen3:8b",
       "conversation_model": "qwen3:8b"
     }
+  },
+  "app": {
+    "event_log_dir": "logs",
+    "event_log_prefix": "events",
+    "ipc_socket_path": "/tmp/gavel_tool.sock"
   }
 }

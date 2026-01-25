@@ -52,6 +52,11 @@ class EvidencePointer(BaseModel):
         serialization_alias="documentId",
         validation_alias=AliasChoices("documentId", "document_id", "source_document", "sourceDocument"),
     )
+    location: Optional[str] = Field(
+        None,
+        serialization_alias="location",
+        validation_alias=AliasChoices("location",),
+    )
     start_offset: Optional[int] = Field(
         None,
         ge=0,

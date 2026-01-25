@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -12,6 +11,7 @@ from typing import Dict, List, Optional
 
 from fastapi import HTTPException
 
+from app.eventing import bind_event_case_id, get_event_producer, reset_event_case_id
 from app.data.checklist_store import (
     DocumentChecklistStore,
     JsonDocumentChecklistStore,
@@ -33,7 +33,7 @@ from app.schemas.documents import DocumentReference
 from app.services.documents import get_case_title, get_document
 from app.services.llm import llm_service
 
-logger = logging.getLogger(__name__)
+producer = get_event_producer(__name__)
 
 _ASSET_DIR = Path(__file__).resolve().parents[1] / "resources" / "checklists"
 _TEMPLATE_PATH = _ASSET_DIR / "v2" / "general_template.txt"
@@ -427,10 +427,9 @@ def _resolve_sentence_evidence(
     sentences_for_doc = sentence_index.get(evidence.document_id) or {}
     matched = [sentences_for_doc[sid] for sid in sentence_ids if sid in sentences_for_doc]
     if not matched:
-        logger.warning(
-            "No matching sentences for evidence (document_id=%s, sentence_ids=%s)",
-            evidence.document_id,
-            sentence_ids,
+        producer.warning(
+            "No matching sentences for evidence",
+            {"document_id": evidence.document_id, "sentence_ids": sentence_ids},
         )
         return EvidencePointer(
             document_id=evidence.document_id,
@@ -721,7 +720,7 @@ async def extract_document_checklists(case_id: str, documents: List[DocumentRefe
     case_name = _resolve_case_name(case_id, documents)
     cached, tokenized_docs, signature = await _resolve_cached_collection(case_id, documents, case_name)
     if cached is not None:
-        logger.debug("Checklist extraction cache hit for signature %s", signature)
+        producer.debug("Checklist extraction cache hit", {"signature": signature})
         return cached
 
     async with _IN_FLIGHT_LOCK:
@@ -748,6 +747,7 @@ async def _run_extraction(
     # Use the Agentic Worker for extraction
     from app.services.agent.driver import run_extraction_agent
 
+    token = bind_event_case_id(case_id)
     try:
         # Run the agent
         # Note: The agent will access documents via the documents service using case_id
@@ -763,6 +763,8 @@ async def _run_extraction(
             
         return _copy_collection(result)
         
-    except Exception:
-        logger.exception("Agent extraction failed for case %s", case_id)
+    except Exception as exc:
+        producer.error("Agent extraction failed", {"case_id": case_id, "error": str(exc)})
         raise
+    finally:
+        reset_event_case_id(token)

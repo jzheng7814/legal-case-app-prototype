@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from functools import lru_cache
 from pathlib import Path
 from threading import RLock
@@ -11,6 +10,7 @@ from fastapi import HTTPException
 
 from app.core.config import get_settings
 from app.data.case_document_store import CaseDocumentStore, JsonCaseDocumentStore
+from app.eventing import get_event_producer
 from app.schemas.documents import Document, DocumentMetadata
 from app.services.clearinghouse import (
     ClearinghouseClient,
@@ -19,7 +19,7 @@ from app.services.clearinghouse import (
     ClearinghouseNotFound,
 )
 
-logger = logging.getLogger(__name__)
+producer = get_event_producer(__name__)
 
 _DEFAULT_CASE_ID = "-1"
 
@@ -53,19 +53,19 @@ def list_documents(case_id: str) -> List[Document]:
         try:
             _CASE_STORE.set(normalized, [doc.model_dump(mode="json") for doc in ordered], case_title)
         except Exception:  # pylint: disable=broad-except
-            logger.exception("Failed to persist catalog documents for case %s.", normalized)
+            producer.error("Failed to persist catalog documents", {"case_id": normalized})
         return _clone_documents(ordered)
 
     cached = _get_cached_documents(normalized)
     if cached is not None:
-        logger.info("Serving cached documents for case %s", normalized)
+        producer.info("Serving cached documents", {"case_id": normalized})
         return cached
 
-    logger.info("Fetching documents from Clearinghouse for case %s", normalized)
+    producer.info("Fetching documents from Clearinghouse", {"case_id": normalized})
     try:
         documents, case_title = _fetch_remote_documents(normalized)
     except ClearinghouseNotConfigured as exc:
-        logger.warning("Clearinghouse API key not configured; cannot fetch case %s.", normalized)
+        producer.warning("Clearinghouse API key not configured", {"case_id": normalized})
         cached = _get_cached_documents(normalized)
         if cached:
             return cached
@@ -78,7 +78,10 @@ def list_documents(case_id: str) -> List[Document]:
             return cached
         raise HTTPException(status_code=404, detail=f"Case '{normalized}' was not found on Clearinghouse.") from exc
     except ClearinghouseError as exc:
-        logger.warning("Clearinghouse request failed for case %s: %s", normalized, exc)
+        producer.warning(
+            "Clearinghouse request failed",
+            {"case_id": normalized, "error": str(exc)},
+        )
         cached = _get_cached_documents(normalized)
         if cached:
             return cached
@@ -192,7 +195,7 @@ def _fetch_remote_documents(case_id: str) -> tuple[List[Document], str]:
     try:
         _CASE_STORE.set(case_id, [doc.model_dump(mode="json") for doc in documents], resolved_title)
     except Exception:  # pylint: disable=broad-except
-        logger.exception("Failed to persist Clearinghouse documents for case %s.", case_id)
+        producer.error("Failed to persist Clearinghouse documents", {"case_id": case_id})
     return documents, resolved_title
 
 
@@ -242,7 +245,10 @@ def _get_cached_documents(case_id: str) -> Optional[List[Document]]:
                 try:
                     working["id"] = int(str(working["id"]).strip())
                 except (TypeError, ValueError):
-                    logger.warning("Unable to coerce cached document id %r to integer for case %s.", working["id"], case_id)
+                    producer.warning(
+                        "Unable to coerce cached document id to integer",
+                        {"case_id": case_id, "document_id": working["id"]},
+                    )
                     continue
             item = working
         documents.append(Document.model_validate(item))

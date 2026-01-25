@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
@@ -9,9 +8,10 @@ from typing import Any, Dict, Optional, Protocol
 
 from pydantic import ValidationError
 
+from app.eventing import get_event_producer
 from app.schemas.checklists import EvidenceCollection
 
-logger = logging.getLogger(__name__)
+producer = get_event_producer(__name__)
 
 DocumentChecklistPayload = EvidenceCollection
 
@@ -80,19 +80,17 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
             items = raw_entry.get("items")
             user_items = raw_entry.get("userItems") or raw_entry.get("user_items") or []
         if not isinstance(stored_signature, str) or items is None:
-            logger.debug("Checklist store entry for case %s missing expected structure.", key)
+            producer.debug("Checklist store entry missing expected structure", {"case_id": key})
             return None
         if version and version != _CHECKLIST_STORE_VERSION:
-            logger.debug(
-                "Checklist store entry for case %s has mismatched version (found=%s, expected=%s).",
-                key,
-                version,
-                _CHECKLIST_STORE_VERSION,
+            producer.debug(
+                "Checklist store entry has mismatched version",
+                {"case_id": key, "found": version, "expected": _CHECKLIST_STORE_VERSION},
             )
             return None
         collection = _coerce_to_collection(items)
         if collection is None:
-            logger.debug("Checklist store entry for case %s failed validation.", key)
+            producer.debug("Checklist store entry failed validation", {"case_id": key})
             return None
         record = StoredDocumentChecklist(
             signature=stored_signature,
@@ -101,11 +99,9 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
             version=version or _CHECKLIST_STORE_VERSION,
         )
         if signature and record.signature != signature:
-            logger.debug(
-                "Checklist store signature mismatch for case %s (expected %s, found %s).",
-                key,
-                signature,
-                record.signature,
+            producer.debug(
+                "Checklist store signature mismatch",
+                {"case_id": key, "expected": signature, "found": record.signature},
             )
             return None
         return record
@@ -155,9 +151,12 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
             data = json.loads(self._file_path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 return data
-            logger.warning("Checklist store file %s did not contain an object. Resetting.", self._file_path)
+            producer.warning(
+                "Checklist store file did not contain an object; resetting",
+                {"path": str(self._file_path)},
+            )
         except (json.JSONDecodeError, OSError):
-            logger.exception("Failed to read checklist store from %s. Resetting.", self._file_path)
+            producer.error("Failed to read checklist store; resetting", {"path": str(self._file_path)})
         return {}
 
     def _write(self, payload: Dict[str, Any]) -> None:
@@ -166,14 +165,17 @@ class JsonDocumentChecklistStore(DocumentChecklistStore):
             tmp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
             tmp_path.replace(self._file_path)
         except OSError:
-            logger.exception("Failed to persist checklist store to %s.", self._file_path)
+            producer.error("Failed to persist checklist store", {"path": str(self._file_path)})
             raise
         finally:
             if tmp_path.exists():
                 try:
                     tmp_path.unlink()
                 except OSError:
-                    logger.warning("Unable to clean up temporary checklist store file %s.", tmp_path)
+                    producer.warning(
+                        "Unable to clean up temporary checklist store file",
+                        {"path": str(tmp_path)},
+                    )
 
 
 def _coerce_to_collection(raw_items: Any) -> Optional[EvidenceCollection]:
@@ -199,7 +201,7 @@ def _coerce_to_collection(raw_items: Any) -> Optional[EvidenceCollection]:
     try:
         return EvidenceCollection.model_validate(payload)
     except ValidationError:
-        logger.debug("Evidence collection payload failed validation.")
+        producer.debug("Evidence collection payload failed validation")
         return None
 
 
