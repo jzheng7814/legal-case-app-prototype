@@ -1,13 +1,13 @@
 {
   "model": {
-    "provider": "ollama",
+    "provider": "openai",
     "defaults": {
       "temperature": 0.3,
-      "max_output_tokens": 16384
+      "max_output_tokens": 32768
     },
     "openai": {
-      "response_model": "gpt-5-mini",
-      "conversation_model": "gpt-5-mini",
+      "response_model": "gpt-5-nano",
+      "conversation_model": "gpt-5-nano",
       "reasoning_effort": "low"
     },
     "ollama": {

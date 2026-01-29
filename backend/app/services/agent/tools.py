@@ -444,25 +444,38 @@ class GetChecklistTool(BaseTool):
         else:
             target_keys.update(definitions.keys())
 
-        # Build response
-        # Group by bin_id
-        extracted = {}
+        # Build response as a list of {key, extracted} entries to match formatter expectations.
+        extracted_by_key: Dict[str, List[Dict[str, Any]]] = {}
         for item in current_state.items:
             if item.bin_id in target_keys:
-                if item.bin_id not in extracted:
-                    extracted[item.bin_id] = []
-                extracted[item.bin_id].append({
-                    "value": item.value,
-                    "evidence": item.evidence.model_dump()
-                })
-        
-        # Add empty keys
-        for key in target_keys:
-            if key not in extracted:
-                extracted[key] = [] # Empty list implies not extracted yet
+                extracted_by_key.setdefault(item.bin_id, []).append(
+                    {
+                        "value": item.value,
+                        "evidence": item.evidence.model_dump(),
+                    }
+                )
+
+        ordered_keys: List[str] = []
+        if items_arg:
+            ordered_keys = [key for key in items_arg if key in target_keys]
+        elif item_arg != "all":
+            ordered_keys = [item_arg]
+        else:
+            ordered_keys = list(definitions.keys())
+
+        checklist_list = []
+        for key in ordered_keys:
+            if key not in target_keys:
+                continue
+            checklist_list.append(
+                {
+                    "key": key,
+                    "extracted": extracted_by_key.get(key, []),
+                }
+            )
 
         completion_stats = self.store.get_completion_stats() if hasattr(self.store, "get_completion_stats") else {}
-        return {"checklist": extracted, "completion_stats": completion_stats}
+        return {"checklist": checklist_list, "completion_stats": completion_stats}
 
 
 class UpdateChecklistTool(BaseTool):

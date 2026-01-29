@@ -245,6 +245,24 @@ class OpenAIBackend(LLMBackend):
         self._conversation_model = config.conversation_model_name()
         self._reasoning_effort = config.reasoning_effort
 
+    def _normalize_openai_tools(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        normalized: List[Dict[str, Any]] = []
+        for tool in tools:
+            if tool.get("type") == "function" and isinstance(tool.get("function"), dict):
+                func = tool["function"]
+                entry = {
+                    "type": "function",
+                    "name": func.get("name"),
+                    "description": func.get("description"),
+                    "parameters": func.get("parameters"),
+                }
+                if func.get("strict") is True:
+                    entry["strict"] = True
+                normalized.append(entry)
+            else:
+                normalized.append(tool)
+        return normalized
+
     def _build_input(self, prompt: str, *, system: Optional[str] = None) -> List[Dict[str, str]]:
         inputs: List[Dict[str, str]] = []
         if system:
@@ -339,7 +357,9 @@ class OpenAIBackend(LLMBackend):
         }
 
         if tools:
-            kwargs["tools"] = tools
+            kwargs["tools"] = self._normalize_openai_tools(tools)
+            kwargs["tool_choice"] = "required"
+            kwargs["parallel_tool_calls"] = False
 
         response = await self._client.responses.create(**kwargs)
         
@@ -380,11 +400,13 @@ class OpenAIBackend(LLMBackend):
         response = await self._client.responses.create(
             model=self._conversation_model,
             input=conversation,
-            tools=tools,
+            tools=self._normalize_openai_tools(tools),
             max_output_tokens=self._defaults.max_output_tokens,
             reasoning={
                 "effort": self._reasoning_effort,
             },
+            tool_choice="required",
+            parallel_tool_calls=False,
         )
         conversation.extend(response.output or [])
 
@@ -415,11 +437,13 @@ class OpenAIBackend(LLMBackend):
             response = await self._client.responses.create(
                 model=self._conversation_model,
                 input=conversation,
-                tools=tools,
+                tools=self._normalize_openai_tools(tools),
                 max_output_tokens=self._defaults.max_output_tokens,
                 reasoning={
                     "effort": self._reasoning_effort,
                 },
+                tool_choice="required",
+                parallel_tool_calls=False,
             )
             conversation.extend(response.output or [])
 

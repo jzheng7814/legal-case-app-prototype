@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import uuid
 import textwrap
 from typing import Dict, List, Optional
@@ -118,28 +119,22 @@ async def get_summary_job(job_id: str) -> SummaryJob:
     return job
 
 
-def _parse_ecf_key(raw_value: Optional[str]) -> tuple[int, int, object]:
-    if raw_value is None:
-        return (1, 1, "")
-    text = str(raw_value).strip()
-    if not text:
-        return (1, 1, "")
+def _parse_date(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
     try:
-        number = int(text)
-        return (0, 0, number)
-    except (TypeError, ValueError):
-        return (0, 1, text)
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _document_sort_key(document: DocumentReference) -> tuple:
-    ecf_flags = _parse_ecf_key(getattr(document, "ecf_number", None))
-    return (
-        0 if getattr(document, "is_docket", False) else 1,
-        ecf_flags[0],
-        ecf_flags[1],
-        ecf_flags[2],
-        document.id,
-    )
+    if getattr(document, "is_docket", False):
+        return (0, document.id)
+    date_value = _parse_date(getattr(document, "date", None))
+    if date_value is None:
+        return (1, 1, 0, document.id)
+    return (1, 0, -date_value.timestamp(), document.id)
 
 
 def _build_document_titles(case_id: str, documents: List[DocumentReference]) -> Dict[int, str]:

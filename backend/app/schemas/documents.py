@@ -13,11 +13,37 @@ class DocumentMetadata(BaseModel):
     type: Optional[str] = Field(None, description="Document type or classifier label")
     description: Optional[str] = None
     source: Optional[str] = Field(None, description="Where the document was obtained from")
+    court: Optional[str] = Field(None, description="Court associated with the document")
+    state: Optional[str] = Field(None, description="State associated with the document")
     ecf_number: Optional[str] = Field(
         None,
         description="Docket/ECF number for ordering",
         serialization_alias="ecfNumber",
         validation_alias=AliasChoices("ecf_number", "ecfNumber"),
+    )
+    file_url: Optional[str] = Field(
+        None,
+        description="Source file URL",
+        serialization_alias="fileUrl",
+        validation_alias=AliasChoices("fileUrl", "file_url"),
+    )
+    external_url: Optional[str] = Field(
+        None,
+        description="External URL for the document",
+        serialization_alias="externalUrl",
+        validation_alias=AliasChoices("externalUrl", "external_url"),
+    )
+    clearinghouse_link: Optional[str] = Field(
+        None,
+        description="Clearinghouse document URL",
+        serialization_alias="clearinghouseLink",
+        validation_alias=AliasChoices("clearinghouseLink", "clearinghouse_link"),
+    )
+    text_url: Optional[str] = Field(
+        None,
+        description="Clearinghouse text URL",
+        serialization_alias="textUrl",
+        validation_alias=AliasChoices("textUrl", "text_url"),
     )
     date: Optional[str] = Field(
         None,
@@ -71,6 +97,10 @@ class DocumentReference(BaseModel):
     alias: Optional[str] = Field(None, description="Optional alternate name to show in prompts")
     include_full_text: bool = Field(False, description="If true, use client-provided content instead of repository lookup")
     content: Optional[str] = Field(None, description="Raw document text supplied by the caller")
+    date: Optional[str] = Field(
+        None,
+        description="Filing or decision date (ISO)",
+    )
     ecf_number: Optional[str] = Field(
         None,
         serialization_alias="ecfNumber",

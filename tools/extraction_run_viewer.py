@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -151,24 +151,15 @@ class LiveLogStream:
                         self.queue.put(record)
 
 
-class ExtractionRunViewer(tk.Tk):
-    def __init__(self) -> None:
-        super().__init__()
-        self.title("Extraction Run Monitor")
+class ExtractionRunViewerWindow(tk.Toplevel):
+    def __init__(self, master: tk.Tk, *, title: str, live_stream: Optional[LiveLogStream] = None) -> None:
+        super().__init__(master)
+        self.title(title)
         self.geometry("1200x720")
 
-        socket_path = _load_socket_path()
-        if not _check_socket_connection(socket_path):
-            messagebox.showerror(
-                "Connection error",
-                f"Unable to connect to log socket at {socket_path}",
-            )
-            self.destroy()
-            return
-
-        self._stream = LiveLogStream(socket_path)
-        self._stream.start()
+        self._stream = live_stream
         self._poll_job: Optional[str] = None
+        self._on_close_callback: Optional[callable] = None
 
         self._runs: Dict[str, RunState] = {}
         self._run_order: List[str] = []
@@ -179,7 +170,24 @@ class ExtractionRunViewer(tk.Tk):
         self._auto_scroll_llm = True
 
         self._build_ui()
-        self._poll_job = self.after(100, self._poll_events)
+        if self._stream:
+            self._stream.start()
+            self._poll_job = self.after(100, self._poll_events)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def set_close_callback(self, callback: Optional[callable]) -> None:
+        self._on_close_callback = callback
+
+    def load_log_file(self, path: Path) -> None:
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    record = _parse_event_line(line)
+                    if record:
+                        self._handle_event(record)
+        except OSError as exc:
+            messagebox.showerror("Log file error", f"Failed to read {path}:\n{exc}")
+            return
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
@@ -308,6 +316,8 @@ class ExtractionRunViewer(tk.Tk):
         self._auto_scroll_llm = end >= 0.999
 
     def _poll_events(self) -> None:
+        if not self._stream:
+            return
         max_per_tick = 400
         processed = 0
         while processed < max_per_tick:
@@ -458,27 +468,95 @@ class ExtractionRunViewer(tk.Tk):
                     lines.append(f"\n{role.upper()}:\n{str(content).strip()}")
         else:
             response = payload.get("response", {})
-            message = response.get("message", {})
-            thinking = message.get("thinking")
-            content = message.get("content")
-            tool_calls = message.get("tool_calls") or []
+            if isinstance(response.get("output"), list):
+                lines.extend(self._format_openai_response(response))
+            else:
+                message = response.get("message", {})
+                thinking = message.get("thinking")
+                content = message.get("content")
+                tool_calls = message.get("tool_calls") or []
 
-            if thinking:
-                lines.append("\n[Thinking]\n" + str(thinking).strip())
-            if content:
-                lines.append("\n[Content]\n" + str(content).strip())
-            if tool_calls:
-                lines.append("\n[Tool Calls]")
-                for call in tool_calls:
-                    function = call.get("function") or {}
-                    name = function.get("name", "unknown")
-                    args = function.get("arguments", {})
-                    lines.append(f"- {name}")
-                    try:
-                        lines.append(json.dumps(args, indent=2, ensure_ascii=False))
-                    except (TypeError, ValueError):
-                        lines.append(str(args))
+                if thinking:
+                    lines.append("\n[Thinking]\n" + str(thinking).strip())
+                if content:
+                    lines.append("\n[Content]\n" + str(content).strip())
+                if tool_calls:
+                    lines.append("\n[Tool Calls]")
+                    for call in tool_calls:
+                        function = call.get("function") or {}
+                        name = function.get("name", "unknown")
+                        args = function.get("arguments", {})
+                        lines.append(f"- {name}")
+                        try:
+                            lines.append(json.dumps(args, indent=2, ensure_ascii=False))
+                        except (TypeError, ValueError):
+                            lines.append(str(args))
         return "\n".join(lines).strip()
+
+    def _format_openai_response(self, response: Dict[str, Any]) -> List[str]:
+        lines: List[str] = []
+        output = response.get("output") or []
+        output_text = response.get("output_text")
+
+        content_blocks: List[str] = []
+        reasoning_blocks: List[str] = []
+        tool_blocks: List[str] = []
+
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            item_type = item.get("type")
+            if item_type == "message":
+                for content in item.get("content") or []:
+                    if not isinstance(content, dict):
+                        continue
+                    ctype = content.get("type")
+                    text = content.get("text")
+                    if ctype in ("output_text", "text") and text:
+                        content_blocks.append(str(text).strip())
+                    elif ctype in ("reasoning", "reasoning_text"):
+                        reason_text = text or content.get("summary") or content.get("content")
+                        if reason_text:
+                            reasoning_blocks.append(str(reason_text).strip())
+            elif item_type == "reasoning":
+                reason_text = item.get("summary") or item.get("content") or item.get("text")
+                if reason_text:
+                    reasoning_blocks.append(str(reason_text).strip())
+            elif item_type == "function_call":
+                name = item.get("name", "unknown")
+                args = item.get("arguments")
+                tool_blocks.append(f"- {name}")
+                if args is not None:
+                    try:
+                        parsed = json.loads(args) if isinstance(args, str) else args
+                        tool_blocks.append(json.dumps(parsed, indent=2, ensure_ascii=False))
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        tool_blocks.append(str(args))
+            elif item_type == "function_call_output":
+                call_id = item.get("call_id", "unknown")
+                output_payload = item.get("output")
+                tool_blocks.append(f"- function_call_output ({call_id})")
+                if output_payload is not None:
+                    try:
+                        parsed = json.loads(output_payload) if isinstance(output_payload, str) else output_payload
+                        tool_blocks.append(json.dumps(parsed, indent=2, ensure_ascii=False))
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        tool_blocks.append(str(output_payload))
+            elif item_type:
+                tool_blocks.append(f"- {item_type}")
+                tool_blocks.append(json.dumps(item, indent=2, ensure_ascii=False, default=str))
+
+        if reasoning_blocks:
+            lines.append("\n[Reasoning]\n" + "\n\n".join(reasoning_blocks).strip())
+        if content_blocks:
+            lines.append("\n[Content]\n" + "\n\n".join(content_blocks).strip())
+        if output_text:
+            lines.append("\n[Output Text]\n" + str(output_text).strip())
+        if tool_blocks:
+            lines.append("\n[Tool Calls]\n" + "\n".join(tool_blocks).strip())
+        if not (reasoning_blocks or content_blocks or output_text or tool_blocks):
+            lines.append("\n[Response]\n" + json.dumps(response, indent=2, ensure_ascii=False, default=str))
+        return lines
 
     @staticmethod
     def _convert_checklist_item(item: Dict[str, Any]) -> ChecklistItem:
@@ -504,16 +582,87 @@ class ExtractionRunViewer(tk.Tk):
         widget.insert(tk.END, content)
         widget.configure(state=tk.DISABLED)
 
-    def on_close(self) -> None:
+    def _on_close(self) -> None:
         if self._poll_job is not None:
             self.after_cancel(self._poll_job)
-        self._stream.stop()
+        if self._stream:
+            self._stream.stop()
+        if self._on_close_callback:
+            self._on_close_callback()
         self.destroy()
 
 
+class ExtractionRunViewerLauncher(tk.Tk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.title("Extraction Run Monitor")
+        self.geometry("420x180")
+        self.resizable(False, False)
+
+        self._live_window: Optional[ExtractionRunViewerWindow] = None
+        self._live_stream: Optional[LiveLogStream] = None
+
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        frame = ttk.Frame(self, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text="Open extraction run viewer").pack(anchor="w", pady=(0, 12))
+
+        self.file_button = ttk.Button(
+            frame,
+            text="Open Viewer From File",
+            command=self._open_file_viewer,
+        )
+        self.file_button.pack(fill=tk.X, pady=(0, 8))
+
+        self.live_button = ttk.Button(
+            frame,
+            text="Listen to Live Log Stream",
+            command=self._open_live_viewer,
+        )
+        self.live_button.pack(fill=tk.X)
+
+    def _open_file_viewer(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Select log file",
+            filetypes=[("Log files", "*.log"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        log_path = Path(path)
+        viewer = ExtractionRunViewerWindow(self, title=f"Extraction Run Viewer — {log_path.name}")
+        viewer.load_log_file(log_path)
+
+    def _open_live_viewer(self) -> None:
+        if self._live_window and self._live_window.winfo_exists():
+            return
+
+        socket_path = _load_socket_path()
+        if not _check_socket_connection(socket_path):
+            messagebox.showerror(
+                "Connection error",
+                f"Unable to connect to log socket at {socket_path}",
+            )
+            return
+
+        stream = LiveLogStream(socket_path)
+        viewer = ExtractionRunViewerWindow(self, title="Extraction Run Viewer — Live", live_stream=stream)
+
+        def _on_close() -> None:
+            self._live_window = None
+            self._live_stream = None
+            self.live_button.state(["!disabled"])
+
+        viewer.set_close_callback(_on_close)
+        self._live_window = viewer
+        self._live_stream = stream
+        self.live_button.state(["disabled"])
+
+
 def main() -> None:
-    app = ExtractionRunViewer()
-    app.protocol("WM_DELETE_WINDOW", app.on_close)
+    app = ExtractionRunViewerLauncher()
     app.mainloop()
 
 

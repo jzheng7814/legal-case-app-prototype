@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import hashlib
 import json
 import re
@@ -78,8 +79,6 @@ _CATEGORY_ORDER = [category["id"] for category in _CATEGORY_METADATA if isinstan
 
 _DOCUMENT_CACHE: Dict[str, EvidenceCollection] = {}
 _DOCUMENT_CACHE_LOCK = asyncio.Lock()
-_IN_FLIGHT_EXTRACTIONS: Dict[str, asyncio.Task[EvidenceCollection]] = {}
-_IN_FLIGHT_LOCK = asyncio.Lock()
 
 _CHECKLIST_DB_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "flat_db" / "document_checklist_items_v2.json"
@@ -87,6 +86,129 @@ _CHECKLIST_DB_PATH = (
 _DOCUMENT_CHECKLIST_STORE: DocumentChecklistStore = JsonDocumentChecklistStore(_CHECKLIST_DB_PATH)
 
 _MAX_DOCUMENT_CHARS = 12_000
+
+
+class ExtractionRunManager:
+    """Monolithic coordinator for checklist extraction runs keyed by case_id."""
+
+    def __init__(self, store: DocumentChecklistStore, *, db_path: Path) -> None:
+        self._store = store
+        self._db_path = db_path
+        self._lock = asyncio.Lock()
+        self._in_flight: Dict[str, asyncio.Task[EvidenceCollection]] = {}
+        self._completed_document_ids: Dict[str, set[int]] = {}
+        self._load_existing_records()
+
+    def _load_existing_records(self) -> None:
+        if not self._db_path.exists():
+            return
+        try:
+            payload = json.loads(self._db_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            producer.warning("Failed to read checklist store for preload", {"path": str(self._db_path)})
+            return
+        if not isinstance(payload, dict):
+            return
+        for case_id, record in payload.items():
+            if not isinstance(record, dict):
+                continue
+            items = record.get("items")
+            try:
+                collection = EvidenceCollection.model_validate(items)
+            except Exception:  # pylint: disable=broad-except
+                continue
+            doc_ids = {
+                item.evidence.document_id
+                for item in collection.items
+                if item.evidence and item.evidence.document_id is not None
+            }
+            if doc_ids:
+                self._completed_document_ids[str(case_id)] = set(doc_ids)
+
+    async def get_cached(self, case_id: str, documents: List[DocumentReference]) -> EvidenceCollection | None:
+        stored = self._store.get(case_id)
+        if stored is None:
+            return None
+        sorted_docs = sorted(documents, key=_document_sort_key)
+        text_lookup = _build_text_lookup_from_references(case_id, sorted_docs)
+        sanitized_items = _strip_sentence_ids_from_collection(stored.items, text_lookup)
+        if sanitized_items != stored.items:
+            self._store.set(
+                case_id,
+                signature=stored.signature,
+                items=sanitized_items,
+                user_items=stored.user_items,
+            )
+        return sanitized_items
+
+    async def ensure_record(self, case_id: str, documents: List[DocumentReference]) -> StoredDocumentChecklist:
+        stored = self._store.get(case_id)
+        if stored is not None:
+            sorted_docs = sorted(documents, key=_document_sort_key)
+            text_lookup = _build_text_lookup_from_references(case_id, sorted_docs)
+            sanitized_items = _strip_sentence_ids_from_collection(stored.items, text_lookup)
+            if sanitized_items != stored.items:
+                self._store.set(
+                    case_id,
+                    signature=stored.signature,
+                    items=sanitized_items,
+                    user_items=stored.user_items,
+                )
+            return StoredDocumentChecklist(
+                signature=stored.signature,
+                items=sanitized_items,
+                user_items=stored.user_items,
+                version=stored.version,
+            )
+
+        await self.ensure_extraction(case_id, documents)
+        stored = self._store.get(case_id)
+        if stored is None:
+            raise RuntimeError(f"Checklist extraction for case {case_id} failed to persist.")
+        return stored
+
+    async def ensure_extraction(self, case_id: str, documents: List[DocumentReference]) -> EvidenceCollection:
+        if not documents:
+            return EvidenceCollection(items=[])
+
+        case_key = str(case_id)
+        async with self._lock:
+            task = self._in_flight.get(case_key)
+            if task is None or task.done():
+                task = asyncio.create_task(self._run_extraction(case_id, documents))
+                self._in_flight[case_key] = task
+
+        try:
+            result = await task
+        finally:
+            if task.done():
+                async with self._lock:
+                    current = self._in_flight.get(case_key)
+                    if current is task:
+                        self._in_flight.pop(case_key, None)
+
+        return _copy_collection(result)
+
+    async def _run_extraction(self, case_id: str, documents: List[DocumentReference]) -> EvidenceCollection:
+        sorted_docs = sorted(documents, key=_document_sort_key)
+        case_name = _resolve_case_name(case_id, sorted_docs)
+        cached, tokenized_docs, signature = await _resolve_cached_collection(case_id, sorted_docs, case_name)
+        if cached is not None:
+            producer.debug("Checklist extraction cache hit", {"case_id": case_id, "signature": signature})
+            return cached
+
+        result = await _run_extraction(case_id, tokenized_docs, signature, case_name)
+        doc_ids = {
+            item.evidence.document_id
+            for item in result.items
+            if item.evidence and item.evidence.document_id is not None
+        }
+        if doc_ids:
+            self._completed_document_ids[str(case_id)] = set(doc_ids)
+        return _copy_collection(result)
+
+
+_EXTRACTION_RUN_MANAGER = ExtractionRunManager(_DOCUMENT_CHECKLIST_STORE, db_path=_CHECKLIST_DB_PATH)
 
 
 def get_checklist_definitions() -> Dict[str, str]:
@@ -152,28 +274,22 @@ class TokenizedDocument:
 _SENTENCE_SPLIT_PATTERN = re.compile(r".+?(?:[.!?](?=\s|$)|\n{2,}|$)", flags=re.DOTALL)
 
 
-def _parse_ecf_key(raw_value: Optional[str]) -> tuple[int, int, object]:
-    if raw_value is None:
-        return (1, 1, "")
-    text = str(raw_value).strip()
-    if not text:
-        return (1, 1, "")
+def _parse_date(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
     try:
-        number = int(text)
-        return (0, 0, number)
-    except (TypeError, ValueError):
-        return (0, 1, text)
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _document_sort_key(doc_ref: DocumentReference) -> tuple:
-    ecf_flags = _parse_ecf_key(doc_ref.ecf_number)
-    return (
-        0 if doc_ref.is_docket else 1,
-        ecf_flags[0],
-        ecf_flags[1],
-        ecf_flags[2],
-        doc_ref.id,
-    )
+    if doc_ref.is_docket:
+        return (0, doc_ref.id)
+    date_value = _parse_date(doc_ref.date)
+    if date_value is None:
+        return (1, 1, 0, doc_ref.id)
+    return (1, 0, -date_value.timestamp(), doc_ref.id)
 
 
 def _resolve_document_payloads(case_id: str, documents: List[DocumentReference]) -> List[Dict[str, str]]:
@@ -352,42 +468,14 @@ async def _resolve_cached_collection(
 async def get_document_checklists_if_cached(
     case_id: str, documents: List[DocumentReference]
 ) -> EvidenceCollection | None:
-    case_name = _resolve_case_name(case_id, documents)
-    cached, tokenized, _ = await _resolve_cached_collection(case_id, documents, case_name)
-    if cached is None:
-        return None
-    text_lookup = {doc.document_id: doc.text for doc in tokenized}
-    sanitized = _strip_sentence_ids_from_collection(cached, text_lookup)
-    return sanitized
+    return await _EXTRACTION_RUN_MANAGER.get_cached(case_id, documents)
 
 
 async def ensure_document_checklist_record(
     case_id: str, documents: List[DocumentReference]
 ) -> StoredDocumentChecklist:
     """Ensure checklist extraction results exist for a case and return the stored payload."""
-    sorted_docs = sorted(documents, key=_document_sort_key)
-    text_lookup = _build_text_lookup_from_references(case_id, sorted_docs)
-    stored = _DOCUMENT_CHECKLIST_STORE.get(case_id)
-    if stored is not None:
-        sanitized_items = _strip_sentence_ids_from_collection(stored.items, text_lookup)
-        if sanitized_items != stored.items:
-            _DOCUMENT_CHECKLIST_STORE.set(
-                case_id,
-                signature=stored.signature,
-                items=sanitized_items,
-                user_items=stored.user_items,
-            )
-        return StoredDocumentChecklist(
-            signature=stored.signature,
-            items=sanitized_items,
-            user_items=stored.user_items,
-            version=stored.version,
-        )
-
-    await extract_document_checklists(case_id, sorted_docs)
-    stored = _DOCUMENT_CHECKLIST_STORE.get(case_id)
-    if stored is None:
-        raise RuntimeError(f"Checklist extraction for case {case_id} failed to persist.")
+    stored = await _EXTRACTION_RUN_MANAGER.ensure_record(case_id, documents)
     return stored
 
 
@@ -714,31 +802,7 @@ def _build_combined_signature(record: StoredDocumentChecklist) -> str:
 
 
 async def extract_document_checklists(case_id: str, documents: List[DocumentReference]) -> EvidenceCollection:
-    if not documents:
-        return EvidenceCollection(items=[])
-
-    case_name = _resolve_case_name(case_id, documents)
-    cached, tokenized_docs, signature = await _resolve_cached_collection(case_id, documents, case_name)
-    if cached is not None:
-        producer.debug("Checklist extraction cache hit", {"signature": signature})
-        return cached
-
-    async with _IN_FLIGHT_LOCK:
-        task = _IN_FLIGHT_EXTRACTIONS.get(signature)
-        if task is None or task.done():
-            task = asyncio.create_task(_run_extraction(case_id, tokenized_docs, signature, case_name))
-            _IN_FLIGHT_EXTRACTIONS[signature] = task
-
-    try:
-        result = await task
-    finally:
-        if task.done():
-            async with _IN_FLIGHT_LOCK:
-                current = _IN_FLIGHT_EXTRACTIONS.get(signature)
-                if current is task:
-                    _IN_FLIGHT_EXTRACTIONS.pop(signature, None)
-
-    return _copy_collection(result)
+    return await _EXTRACTION_RUN_MANAGER.ensure_extraction(case_id, documents)
 
 
 async def _run_extraction(

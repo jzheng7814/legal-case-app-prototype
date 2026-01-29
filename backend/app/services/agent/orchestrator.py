@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 from app.eventing import get_event_producer
+from app.core.config import get_settings
 from app.services.llm import llm_service, LLMMessage, LLMResult
 from app.services.agent.schemas import Snapshot, OrchestratorAction
 from app.services.agent.tools import BaseTool, StopTool
@@ -20,6 +21,15 @@ class Orchestrator:
     def __init__(self, model_name: str = "gpt-4o", config_dir: Optional[Path] = None):
         self.model_name = model_name
         self._tools: Dict[str, BaseTool] = {}
+
+        settings = get_settings()
+        self._provider = settings.model.provider
+        if self._provider == "openai" and settings.model.openai:
+            self._active_model = settings.model.openai.conversation_model_name()
+        elif self._provider == "ollama" and settings.model.ollama:
+            self._active_model = settings.model.ollama.conversation_model_name()
+        else:
+            self._active_model = "unknown"
 
         self._stop_tool = StopTool()
         self.config_dir = Path(config_dir) if config_dir else Path(__file__).parent / "config"
@@ -48,6 +58,8 @@ class Orchestrator:
 
     def _load_config(self) -> None:
         prompts_file = self.config_dir / "prompts_qwen.yaml"
+        if self._provider == "openai":
+            prompts_file = self.config_dir / "prompts_gpt5.yaml"
         if not prompts_file.exists():
             producer.warning("Prompts config not found", {"path": str(prompts_file)})
             return
@@ -60,18 +72,67 @@ class Orchestrator:
         except Exception:
             producer.error("Failed to load prompts config", {"path": str(prompts_file)})
 
-    def _convert_to_tool_schema(self, tool: BaseTool) -> Dict[str, Any]:
+    def _convert_to_tool_schema(self, tool: BaseTool, *, strict: bool = False) -> Dict[str, Any]:
         """
         Convert internal Tool representation to OpenAI/Ollama-compatible tool schema.
         """
+        parameters = tool.get_input_schema()
+        if strict:
+            parameters = self._enforce_strict_schema(parameters)
         return {
             "type": "function",
             "function": {
                 "name": tool.name,
                 "description": tool.description,
-                "parameters": tool.get_input_schema()
+                "parameters": parameters,
+                **({"strict": True} if strict else {})
             }
         }
+
+    def _allow_null_type(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        schema_type = schema.get("type")
+        if isinstance(schema_type, list):
+            if "null" not in schema_type:
+                schema["type"] = schema_type + ["null"]
+        elif isinstance(schema_type, str):
+            schema["type"] = [schema_type, "null"]
+        return schema
+
+    def _enforce_strict_schema(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Enforce OpenAI strict tool schema requirements:
+        - additionalProperties=false for every object
+        - all properties are required
+        - optional fields represented via type union with null
+        """
+        if not isinstance(schema, dict):
+            return schema
+
+        schema = json.loads(json.dumps(schema))
+        properties = schema.get("properties")
+        is_object = schema.get("type") == "object" or properties is not None
+
+        if is_object:
+            properties = properties or {}
+            original_required = set(schema.get("required", []))
+            schema["properties"] = properties
+            schema["required"] = list(properties.keys())
+            schema["additionalProperties"] = False
+
+            for key, prop in properties.items():
+                prop = self._enforce_strict_schema(prop)
+                if key not in original_required:
+                    prop = self._allow_null_type(prop)
+                properties[key] = prop
+
+        if schema.get("type") == "array":
+            items = schema.get("items")
+            if isinstance(items, dict):
+                schema["items"] = self._enforce_strict_schema(items)
+            elif isinstance(items, list):
+                schema["items"] = [self._enforce_strict_schema(item) for item in items]
+
+        return schema
 
     async def decide_next_action(self, snapshot: Snapshot, formatted_prompt: str) -> OrchestratorAction:
         """
@@ -87,9 +148,12 @@ class Orchestrator:
         if self.tool_definitions:
             tool_schemas = list(self.tool_definitions)
             if not any(tool.get("function", {}).get("name") == "stop_task" for tool in tool_schemas):
-                tool_schemas.append(self._convert_to_tool_schema(self._stop_tool))
+                tool_schemas.append(self._convert_to_tool_schema(self._stop_tool, strict=self._provider == "openai"))
         else:
-            tool_schemas = [self._convert_to_tool_schema(t) for t in all_tools]
+            tool_schemas = [
+                self._convert_to_tool_schema(t, strict=self._provider == "openai")
+                for t in all_tools
+            ]
         
         # User message is the formatted snapshot
         messages = [LLMMessage(role="user", content=formatted_prompt)]

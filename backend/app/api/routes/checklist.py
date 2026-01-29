@@ -20,6 +20,7 @@ def _build_document_references(case_id: str) -> List[DocumentReference]:
             title=doc.title,
             include_full_text=True,
             content=doc.content,
+            date=doc.date,
             ecf_number=doc.ecf_number,
             is_docket=doc.is_docket,
         )
@@ -35,6 +36,7 @@ def _build_cached_document_references(case_id: str) -> List[DocumentReference]:
             title=doc.title,
             include_full_text=True,
             content=doc.content,
+            date=doc.date,
             ecf_number=doc.ecf_number,
             is_docket=doc.is_docket,
         )

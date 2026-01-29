@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from threading import RLock
@@ -268,29 +269,22 @@ def _normalize_case_id(case_id: str) -> str:
         return str(case_id)
 
 
-def _parse_ecf_key(raw_value: Optional[str]) -> tuple[int, int, object]:
-    if raw_value is None:
-        return (1, 1, "")
-    text = str(raw_value).strip()
-    if not text:
-        return (1, 1, "")
+def _parse_date(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
     try:
-        number = int(text)
-        return (0, 0, number)
-    except (TypeError, ValueError):
-        return (0, 1, text)
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _document_sort_key(document: Document) -> tuple:
-    ecf_flags = _parse_ecf_key(document.ecf_number)
-    # Place docket first, then ECF-bearing documents, then remainder by id.
-    return (
-        0 if document.is_docket else 1,
-        ecf_flags[0],
-        ecf_flags[1],
-        ecf_flags[2],
-        document.id,
-    )
+    if document.is_docket:
+        return (0, document.id)
+    date_value = _parse_date(document.date)
+    if date_value is None:
+        return (1, 1, 0, document.id)
+    return (1, 0, -date_value.timestamp(), document.id)
 
 
 def _sort_documents(documents: List[Document]) -> List[Document]:

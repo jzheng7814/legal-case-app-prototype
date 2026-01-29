@@ -23,7 +23,7 @@ class SnapshotBuilder:
         checklist_config: Optional[Dict[str, Any]] = None,
         user_instruction: Optional[str] = None,
         task_constraints: Optional[List[str]] = None,
-        recent_actions_detail: int = 5,
+        recent_actions_detail: int = 3,
         max_action_tail: int = 100,
     ):
         self.case_id = case_id

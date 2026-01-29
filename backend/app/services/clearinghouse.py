@@ -88,8 +88,18 @@ class ClearinghouseClient:
         """Return all documents (including docket) for the supplied case identifier."""
         case_detail = self._fetch_case(case_id)
         case_title = case_detail.get("name") if case_detail else None
-        documents_payload = self._fetch_documents(case_id)
-        main_docket = _extract_case_docket(case_detail)
+        if not case_detail:
+            raise ClearinghouseNotFound(f"Case not found on Clearinghouse for case_id={case_id}")
+
+        case_documents_url = case_detail.get("case_documents_url")
+        case_dockets_url = case_detail.get("case_dockets_url")
+        if not case_documents_url or not case_dockets_url:
+            raise ClearinghouseError(
+                f"Clearinghouse case payload missing documents/dockets URLs for case {case_id}."
+            )
+
+        documents_payload = self._fetch_all_pages(case_documents_url)
+        dockets_payload = self._fetch_all_pages(case_dockets_url)
 
         documents: List[Document] = []
         for raw_doc in documents_payload:
@@ -101,15 +111,15 @@ class ClearinghouseClient:
                     {"case_id": case_id, "document_id": raw_doc.get("id")},
                 )
 
-        if main_docket:
+        for raw_docket in dockets_payload:
             try:
-                docket_document = self._convert_docket(main_docket, case_title)
+                docket_document = self._convert_docket(raw_docket, case_title)
                 if docket_document is not None:
                     documents.append(docket_document)
             except Exception:  # pylint: disable=broad-except
                 producer.error(
                     "Failed to convert Clearinghouse docket",
-                    {"case_id": case_id, "document_id": main_docket.get("id")},
+                    {"case_id": case_id, "document_id": raw_docket.get("id")},
                 )
 
         _log_file(
@@ -118,8 +128,7 @@ class ClearinghouseClient:
                 "case_id": case_id,
                 "case_title": case_title,
                 "documents_api_count": len(documents_payload),
-                "dockets_api_count": 1 if main_docket else 0,
-                "docket_source": "case" if main_docket else None,
+                "dockets_api_count": len(dockets_payload),
                 "converted_count": len(documents),
             }
         )
@@ -136,10 +145,14 @@ class ClearinghouseClient:
 
     def _request(self, path: str, *, params: Optional[Dict[str, Any]] = None) -> Any:
         url = f"{self._base_url}{path}"
+        return self._request_url(url, params=params, path=path)
+
+    def _request_url(self, url: str, *, params: Optional[Dict[str, Any]] = None, path: Optional[str] = None) -> Any:
+        request_path = path or url
         _log_file(
             {
                 "operation": "clearinghouse.request",
-                "path": path,
+                "path": request_path,
                 "url": url,
                 "params": params,
                 "timeout_seconds": self._timeout,
@@ -152,7 +165,7 @@ class ClearinghouseClient:
             _log_file(
                 {
                     "operation": "clearinghouse.request_error",
-                    "path": path,
+                    "path": request_path,
                     "url": url,
                     "params": params,
                     "error": str(exc),
@@ -175,7 +188,7 @@ class ClearinghouseClient:
 
         response_record: Dict[str, Any] = {
             "operation": "clearinghouse.response",
-            "path": path,
+            "path": request_path,
             "status_code": response.status_code,
             "elapsed_ms": elapsed_ms,
             "params": params,
@@ -203,7 +216,7 @@ class ClearinghouseClient:
             status = exc.response.status_code
             error_record: Dict[str, Any] = {
                 "operation": "clearinghouse.http_error",
-                "path": path,
+                "path": request_path,
                 "status_code": status,
                 "params": params,
                 "detail": str(exc),
@@ -231,23 +244,16 @@ class ClearinghouseClient:
             return first if isinstance(first, dict) else None
         return None
 
-    def _fetch_documents(self, case_id: str) -> List[Dict[str, Any]]:
-        # v2.1: /cases/{id}/documents/
-        payload = self._request(f"/cases/{case_id}/documents/")
-        if isinstance(payload, dict) and isinstance(payload.get("results"), list):
-            return [item for item in payload["results"] if isinstance(item, dict)]
-        if isinstance(payload, list):
-            return [item for item in payload if isinstance(item, dict)]
-        return []
-
-    def _fetch_dockets(self, case_id: str) -> List[Dict[str, Any]]:
-        # v2.1: /cases/{id}/dockets/
-        payload = self._request(f"/cases/{case_id}/dockets/")
-        if isinstance(payload, dict) and isinstance(payload.get("results"), list):
-            return [item for item in payload["results"] if isinstance(item, dict)]
-        if isinstance(payload, list):
-            return [item for item in payload if isinstance(item, dict)]
-        return []
+    def _fetch_all_pages(self, url: str) -> List[Dict[str, Any]]:
+        results: List[Dict[str, Any]] = []
+        next_url: Optional[str] = url
+        while next_url:
+            payload = self._request_url(next_url)
+            page_results = payload.get("results") if isinstance(payload, dict) else None
+            if isinstance(page_results, list):
+                results.extend([item for item in page_results if isinstance(item, dict)])
+            next_url = payload.get("next") if isinstance(payload, dict) else None
+        return results
 
     def _fetch_full_text(self, url: str) -> Optional[str]:
         """Fetch full text from the dedicated text URL."""
@@ -307,6 +313,16 @@ class ClearinghouseClient:
             type=doc_type or "Document",
             description=description,
             source="clearinghouse",
+            court=_normalise_string(raw.get("court")),
+            state=_normalise_string(raw.get("state")),
+            ecf_number=_normalise_string(raw.get("ecf_number")),
+            date=_normalise_string(raw.get("date")),
+            date_is_estimate=raw.get("date_is_estimate"),
+            date_not_available=raw.get("date_not_available"),
+            file_url=_normalise_string(raw.get("file")),
+            external_url=_normalise_string(raw.get("external_url")),
+            clearinghouse_link=_normalise_string(raw.get("clearinghouse_link")),
+            text_url=_normalise_string(raw.get("text_url")),
             content=content,
         )
 
@@ -323,10 +339,12 @@ class ClearinghouseClient:
         except (TypeError, ValueError):
             return None
 
-        # Name per request: "Docket <docket-id>"
-        title = f"Docket {docket_id}"
+        docket_number = _normalise_string(raw.get("docket_number_manual"))
+        title = "Main Docket" if raw.get("is_main_docket") is True else "Docket"
+        if docket_number:
+            title = f"{title} ({docket_number})"
         description = _normalise_string(raw.get("court")) or case_title
-        content = _render_docket_content(entries)
+        content = _render_docket_content(entries, raw)
 
         return Document(
             id=docket_id,
@@ -334,35 +352,11 @@ class ClearinghouseClient:
             type="Docket",
             description=description,
             source="clearinghouse",
+            court=_normalise_string(raw.get("court")),
+            state=_normalise_string(raw.get("state")),
+            is_docket=True,
             content=content,
         )
-
-
-def _extract_case_docket(case_detail: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Return the main docket embedded within the case payload, if present."""
-    if not isinstance(case_detail, dict):
-        return None
-
-    docket = case_detail.get("main_docket") or case_detail.get("docket")
-    if isinstance(docket, dict):
-        if "court" not in docket and case_detail.get("court") is not None:
-            docket = {**docket, "court": case_detail.get("court")}
-        return docket
-
-    entries = case_detail.get("docket_entries")
-    if isinstance(entries, list):
-        docket_id = case_detail.get("docket_id") or case_detail.get("id") or case_detail.get("case_id")
-        synthetic: Dict[str, Any] = {
-            "id": docket_id,
-            "docket_entries": entries,
-        }
-        court = case_detail.get("court")
-        if court is not None:
-            synthetic["court"] = court
-        return synthetic
-
-    return None
-
 
 
 def _normalise_string(value: Any) -> Optional[str]:
@@ -382,6 +376,12 @@ def _render_document_content(raw: Dict[str, Any]) -> str:
     court = _normalise_string(raw.get("court"))
     if court:
         metadata.append(f"Court: {court}")
+    state = _normalise_string(raw.get("state"))
+    if state:
+        metadata.append(f"State: {state}")
+    ecf_number = _normalise_string(raw.get("ecf_number"))
+    if ecf_number:
+        metadata.append(f"ECF: {ecf_number}")
     source = _normalise_string(raw.get("document_source"))
     if source:
         metadata.append(f"Source: {source}")
@@ -394,27 +394,11 @@ def _render_document_content(raw: Dict[str, Any]) -> str:
 
     text = raw.get("text")
     has_text = isinstance(text, str) and text.strip()
-    links: List[str] = []
-
-    file_url = _normalise_string(raw.get("file"))
-    if file_url:
-        links.append(f"Clearinghouse file: {file_url}")
-    external_url = _normalise_string(raw.get("external_url"))
-    if external_url:
-        links.append(f"External link: {external_url}")
-    recap_link = _normalise_string(raw.get("clearinghouse_link"))
-    if recap_link:
-        links.append(f"Clearinghouse summary: {recap_link}")
 
     if has_text:
         lines.append(text.strip())
-    elif links:
-        lines.append("No inline text was provided for this document. Refer to the links below.")
     else:
         lines.append("No inline text was provided for this document.")
-
-    if links:
-        lines.append("\n".join(links))
 
     return "\n\n".join(part for part in lines if part)
 
@@ -435,51 +419,53 @@ def _number_sort_key(value: Any) -> tuple:
     return (2, 0)
 
 
-def _render_docket_content(entries: Iterable[Dict[str, Any]]) -> str:
+def _render_docket_content(entries: Iterable[Dict[str, Any]], docket: Dict[str, Any]) -> str:
     formatted_entries: List[str] = []
-    def _entry_key(item: Dict[str, Any]):
-        date_key = _normalise_string(item.get("date_filed")) or ""
-        num_val = item.get("row_number")
-        if num_val is None:
-            num_val = item.get("entry_number")
-        return (date_key, _number_sort_key(num_val))
-
-    sorted_entries = sorted((entry for entry in entries if isinstance(entry, dict)), key=_entry_key)
+    sorted_entries = sorted(
+        (entry for entry in entries if isinstance(entry, dict)),
+        key=lambda item: (item.get("row_number") is None, item.get("row_number") or 0),
+    )
 
     if not sorted_entries:
         return "No docket entries were returned for this case."
 
-    for index, entry in enumerate(sorted_entries, start=1):
-        header_parts: List[str] = []
+    header_parts: List[str] = []
+    court = _normalise_string(docket.get("court"))
+    state = _normalise_string(docket.get("state"))
+    if court:
+        header_parts.append(f"Court: {court}")
+    if state:
+        header_parts.append(f"State: {state}")
+    header = "\n".join(header_parts) if header_parts else ""
 
-        entry_id = _normalise_string(entry.get("entry_number")) or str(entry.get("row_number") or index)
-        header_parts.append(f"Entry {entry_id}")
+    for index, entry in enumerate(sorted_entries, start=1):
+        line_parts: List[str] = []
+
+        row_number = entry.get("row_number")
+        if row_number is not None:
+            line_parts.append(f"Row: {row_number}")
+
+        entry_id = _normalise_string(entry.get("entry_number")) or ""
+        if entry_id:
+            line_parts.append(f"Entry: {entry_id}")
+
+        docket_entry_id = entry.get("id")
+        if docket_entry_id is not None:
+            line_parts.append(f"ID: {docket_entry_id}")
 
         date = _normalise_string(entry.get("date_filed"))
         if date:
-            header_parts.append(f"Filed: {date}")
+            line_parts.append(f"Filed: {date}")
+
+        pacer_doc_id = _normalise_string(entry.get("pacer_doc_id"))
+        if pacer_doc_id:
+            line_parts.append(f"PACER Doc ID: {pacer_doc_id}")
 
         description = _normalise_string(entry.get("description")) or "No description provided."
-        header_parts.append(description)
+        line_parts.append(f"Description: {description}")
 
-        block_lines = [" | ".join(header_parts)]
+        formatted_entries.append(" | ".join(line_parts))
 
-        url = _normalise_string(entry.get("url")) or _normalise_string(entry.get("recap_pdf_url"))
-        if url:
-            block_lines.append(f"Link: {url}")
-
-        attachments = entry.get("attachments")
-        if isinstance(attachments, list):
-            for attachment in attachments:
-                if not isinstance(attachment, dict):
-                    continue
-                att_desc = _normalise_string(attachment.get("description"))
-                att_url = _normalise_string(attachment.get("url"))
-                if att_desc and att_url and att_desc != att_url:
-                    block_lines.append(f"Attachment: {att_desc} ({att_url})")
-                elif att_url:
-                    block_lines.append(f"Attachment: {att_url}")
-
-        formatted_entries.append("\n".join(block_lines))
-
+    if header:
+        return "\n\n".join([header, *formatted_entries])
     return "\n\n".join(formatted_entries)

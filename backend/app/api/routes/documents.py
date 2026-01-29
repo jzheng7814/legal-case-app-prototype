@@ -26,6 +26,7 @@ async def get_case_documents(case_id: str) -> DocumentListResponse:
             include_full_text=True,
             content=doc.content,
             ecf_number=doc.ecf_number,
+            date=doc.date,
             is_docket=doc.is_docket,
         )
         for doc in documents
