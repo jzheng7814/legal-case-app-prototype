@@ -3,7 +3,7 @@ Tools for the legal agent, adapting backend services.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, Tuple
 import re
 import json
 from pydantic import BaseModel, ValidationError
@@ -14,6 +14,38 @@ from app.services.checklists import get_checklist_definitions
 # and eventually saved to ChecklistStore.
 
 from app.services.agent.tokenizer import TokenizerWrapper
+from app.services.agent.sentences import build_sentence_index
+
+
+MAX_SENTENCES_PER_READ = 200
+
+
+def _extract_document_id(ev: Dict[str, Any]) -> Optional[int]:
+    for key in ("document_id", "documentId", "source_document", "sourceDocument", "doc_id"):
+        value = ev.get(key)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _extract_sentence_ids(ev: Dict[str, Any]) -> Optional[List[int]]:
+    for key in ("sentence_ids", "sentenceIds"):
+        value = ev.get(key)
+        if isinstance(value, list):
+            if not all(isinstance(entry, int) for entry in value):
+                return None
+            return value
+    return None
+
+
+def _validate_contiguous_sentence_ids(sentence_ids: List[int]) -> Optional[str]:
+    if not sentence_ids:
+        return "sentence_ids must be a non-empty list."
+    ordered = sorted(sentence_ids)
+    for prev, nxt in zip(ordered, ordered[1:]):
+        if nxt != prev + 1:
+            return "sentence_ids must be contiguous."
+    return None
 
 
 def _validate_patch_payload(patches: Any) -> List[str]:
@@ -47,17 +79,86 @@ def _validate_patch_payload(patches: Any) -> List[str]:
                 if not isinstance(ev, dict):
                     errors.append(f"Patch {idx} extracted[{eidx}] evidence[{vidx}] must be an object.")
                     continue
-                text = ev.get("text")
-                source_document = ev.get("source_document")
-                location = ev.get("location")
-                if not isinstance(text, str) or not text.strip():
-                    errors.append(f"Patch {idx} extracted[{eidx}] evidence[{vidx}] missing text.")
-                if not isinstance(source_document, int) or source_document < 0:
-                    errors.append(f"Patch {idx} extracted[{eidx}] evidence[{vidx}] source_document must be a non-negative int.")
-                if not isinstance(location, str) or not location.strip():
-                    errors.append(f"Patch {idx} extracted[{eidx}] evidence[{vidx}] missing location.")
+                doc_id = _extract_document_id(ev)
+                if doc_id is None or doc_id < 0:
+                    errors.append(
+                        f"Patch {idx} extracted[{eidx}] evidence[{vidx}] document_id must be a non-negative int."
+                    )
+                sentence_ids = _extract_sentence_ids(ev)
+                if sentence_ids is None:
+                    errors.append(
+                        f"Patch {idx} extracted[{eidx}] evidence[{vidx}] sentence_ids must be a list of integers."
+                    )
+                else:
+                    contiguous_error = _validate_contiguous_sentence_ids(sentence_ids)
+                    if contiguous_error:
+                        errors.append(
+                            f"Patch {idx} extracted[{eidx}] evidence[{vidx}] {contiguous_error}"
+                        )
 
     return errors
+
+
+def _normalize_sentence_text(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _resolve_sentence_evidence(case_id: str, ev: Dict[str, Any]) -> Dict[str, Any]:
+    doc_id = _extract_document_id(ev)
+    if doc_id is None:
+        raise ValueError("Evidence missing document_id.")
+
+    sentence_ids = _extract_sentence_ids(ev)
+    if sentence_ids is None:
+        raise ValueError("Evidence missing sentence_ids.")
+
+    contiguous_error = _validate_contiguous_sentence_ids(sentence_ids)
+    if contiguous_error:
+        raise ValueError(contiguous_error)
+
+    docs = list_cached_documents(case_id)
+    target_doc = next((d for d in docs if d.id == doc_id), None)
+    if not target_doc:
+        raise ValueError(f"Document id '{doc_id}' not found.")
+
+    text = target_doc.content or ""
+    spans = build_sentence_index(case_id, doc_id, text)
+    if not spans:
+        raise ValueError("No sentences found in document.")
+
+    start_id = min(sentence_ids)
+    end_id = max(sentence_ids)
+    if start_id < 0 or end_id >= len(spans):
+        raise ValueError("sentence_ids out of range for document.")
+
+    start_char = spans[start_id].start_char
+    end_char = spans[end_id].end_char
+    snippet = text[start_char:end_char]
+    location = f"sentences {start_id}-{end_id}" if start_id != end_id else f"sentence {start_id}"
+
+    return {
+        "source_document": doc_id,
+        "start_offset": start_char,
+        "end_offset": end_char,
+        "text": snippet,
+        "location": location,
+    }
+
+
+def _find_sentence_id(spans: List["SentenceSpan"], char_pos: int) -> Optional[int]:
+    # Simple binary search over span starts.
+    left = 0
+    right = len(spans) - 1
+    while left <= right:
+        mid = (left + right) // 2
+        span = spans[mid]
+        if char_pos < span.start_char:
+            right = mid - 1
+        elif char_pos >= span.end_char:
+            left = mid + 1
+        else:
+            return span.sentence_id
+    return None
 
 
 class BaseTool(ABC):
@@ -134,7 +235,7 @@ class ListDocumentsTool(BaseTool):
     def __init__(self):
         super().__init__(
             name="list_documents",
-            description="Returns all documents with their metadata (type, token_count). Use first if the catalog is unknown."
+            description="Returns all documents with their metadata (type, sentence_count). Use first if the catalog is unknown."
         )
 
     def get_input_schema(self) -> Dict[str, Any]:
@@ -156,12 +257,12 @@ class ListDocumentsTool(BaseTool):
                             "document_id": {"type": "integer"},
                             "title": {"type": "string"},
                             "type": {"type": "string"},
-                            "token_count": {"type": "integer"},
+                            "sentence_count": {"type": "integer"},
                             "visited": {"type": "boolean"},
                             "coverage": {
                                 "type": "object",
                                 "properties": {
-                                    "token_ranges": {
+                                    "sentence_ranges": {
                                         "type": "array",
                                         "items": {
                                             "type": "array",
@@ -184,10 +285,8 @@ class ListDocumentsTool(BaseTool):
             docs = list_cached_documents(self.case_id)
             results = []
             for doc in docs:
-                # Calculate tokens on the fly if not stored, defaulting to simple count if tokenizer fails
-                # Using tokenizer from context
                 text = doc.content or ""
-                token_count = self.tokenizer.count_tokens(text) if self.tokenizer else len(text.split())
+                sentence_count = len(build_sentence_index(self.case_id, doc.id, text))
                 visited = False
                 coverage = []
                 if self.ledger:
@@ -198,9 +297,9 @@ class ListDocumentsTool(BaseTool):
                     "document_id": doc.id,
                     "title": doc.title or f"Document {doc.id}",
                     "type": doc.type,
-                    "token_count": token_count,
+                    "sentence_count": sentence_count,
                     "visited": visited,
-                    "coverage": {"token_ranges": coverage},
+                    "coverage": {"sentence_ranges": coverage},
                     "description": doc.description
                 })
             
@@ -216,7 +315,7 @@ class ReadDocumentTool(BaseTool):
     def __init__(self):
         super().__init__(
             name="read_document",
-            description="Reads a specific token range from a document. start_token is inclusive; end_token is exclusive. Maximum range: 10,000 tokens per call."
+            description="Reads a specific sentence range from a document. start_sentence is inclusive; end_sentence is exclusive. Maximum range: 200 sentences per call."
         )
 
     def get_input_schema(self) -> Dict[str, Any]:
@@ -224,10 +323,10 @@ class ReadDocumentTool(BaseTool):
             "type": "object",
             "properties": {
                 "doc_id": {"type": "integer", "description": "ID of the document to read"},
-                "start_token": {"type": "integer"},
-                "end_token": {"type": "integer"}
+                "start_sentence": {"type": "integer"},
+                "end_sentence": {"type": "integer"}
             },
-            "required": ["doc_id", "start_token", "end_token"]
+            "required": ["doc_id", "start_sentence", "end_sentence"]
         }
 
     def get_output_schema(self) -> Dict[str, Any]:
@@ -236,8 +335,9 @@ class ReadDocumentTool(BaseTool):
             "properties": {
                 "text": {"type": "string"},
                 "doc_id": {"type": "integer"},
-                "start_token": {"type": "integer"},
-                "end_token": {"type": "integer"},
+                "start_sentence": {"type": "integer"},
+                "end_sentence": {"type": "integer"},
+                "total_sentences": {"type": "integer"},
                 "error": {"type": "string"}
             }
         }
@@ -247,8 +347,8 @@ class ReadDocumentTool(BaseTool):
             return {"error": "Framework error: case_id not set"}
 
         doc_id = args.get("doc_id")
-        start_token = args.get("start_token", 0)
-        end_token = args.get("end_token", 0)
+        start_sentence = args.get("start_sentence", 0)
+        end_sentence = args.get("end_sentence", 0)
 
         try:
             docs = list_cached_documents(self.case_id)
@@ -257,16 +357,26 @@ class ReadDocumentTool(BaseTool):
                 return {"error": f"Document id '{doc_id}' not found."}
 
             text = target_doc.content or ""
-            
-            # Tokenize and extract range
-            # Re-tokenize might be slow for huge docs, ideally cache this in Ledger or DocumentManager
-            if self.tokenizer:
-                sub_text, actual_start, actual_end = self.tokenizer.get_text_for_token_range(text, start_token, end_token)
-            else:
-                # Fallback char/word slicing
-                words = text.split()
-                sub_text = " ".join(words[start_token:end_token])
-                actual_start, actual_end = start_token, min(end_token, len(words))
+            spans = build_sentence_index(self.case_id, target_doc.id, text)
+            total_sentences = len(spans)
+            if total_sentences == 0:
+                return {"error": "Document has no sentences."}
+
+            if end_sentence <= start_sentence:
+                return {"error": "end_sentence must be greater than start_sentence."}
+
+            start_sentence = max(0, min(start_sentence, total_sentences))
+            end_sentence = max(start_sentence, min(end_sentence, total_sentences))
+
+            if end_sentence - start_sentence > MAX_SENTENCES_PER_READ:
+                return {"error": f"Sentence range exceeds {MAX_SENTENCES_PER_READ} sentence limit."}
+
+            lines = []
+            for sent in spans[start_sentence:end_sentence]:
+                line_text = _normalize_sentence_text(sent.text)
+                lines.append(f"{sent.sentence_id} {line_text}")
+            sub_text = "\n".join(lines)
+            actual_start, actual_end = start_sentence, end_sentence
 
             # Record read in ledger
             if self.ledger:
@@ -275,9 +385,9 @@ class ReadDocumentTool(BaseTool):
             return {
                 "text": sub_text,
                 "doc_id": target_doc.id,
-                "start_token": actual_start,
-                "end_token": actual_end,
-                "total_tokens": self.tokenizer.count_tokens(text) if self.tokenizer else len(text.split())
+                "start_sentence": actual_start,
+                "end_sentence": actual_end,
+                "total_sentences": total_sentences,
             }
 
         except Exception as e:
@@ -288,7 +398,7 @@ class SearchDocumentRegexTool(BaseTool):
     def __init__(self):
         super().__init__(
             name="search_document_regex",
-            description="Searches documents using a regex pattern. Returns matches with ~context_tokens."
+            description="Searches documents using a regex pattern. Returns matches with sentence-context windows."
         )
 
     def get_input_schema(self) -> Dict[str, Any]:
@@ -299,7 +409,7 @@ class SearchDocumentRegexTool(BaseTool):
                 "doc_id": {"type": "integer", "description": "Single document ID or -1 for all documents"},
                 "doc_ids": {"type": "array", "items": {"type": "integer"}, "description": "Array of document IDs to search"},
                 "flags": {"type": "array", "items": {"type": "string"}, "default": []},
-                "context_tokens": {"type": "integer", "default": 200},
+                "context_sentences": {"type": "integer", "default": 2},
                 "top_k": {"type": "integer", "default": 5}
             },
             "required": ["pattern"]
@@ -313,7 +423,7 @@ class SearchDocumentRegexTool(BaseTool):
         doc_id = args.get("doc_id")
         doc_ids = args.get("doc_ids") or []
         flags = args.get("flags", [])
-        context_tokens = args.get("context_tokens", 200)
+        context_sentences = args.get("context_sentences", 2)
         top_k = args.get("top_k", 5)
         
         try:
@@ -356,27 +466,28 @@ class SearchDocumentRegexTool(BaseTool):
                 doc_matches = []
                 for m in matches[:top_k]:
                     start_char, end_char = m.span()
-                    if self.tokenizer:
-                        tokens = self.tokenizer.encode(text)
-                        approx_token = int((start_char / max(len(text), 1)) * len(tokens)) if tokens else 0
-                        context_start = max(0, approx_token - context_tokens // 2)
-                        context_end = min(len(tokens), approx_token + context_tokens // 2)
-                        snippet, _, _ = self.tokenizer.get_text_for_token_range(text, context_start, context_end)
-                        start_token = context_start
-                        end_token = context_end
-                    else:
-                        ctx_chars = context_tokens * 4
-                        ctx_start = max(0, start_char - ctx_chars)
-                        ctx_end = min(len(text), end_char + ctx_chars)
-                        snippet = text[ctx_start:ctx_end]
-                        start_token = 0
-                        end_token = 0
+                    spans = build_sentence_index(self.case_id, doc.id, text)
+                    sentence_id = _find_sentence_id(spans, start_char)
+                    if sentence_id is None:
+                        continue
+
+                    ctx = max(0, int(context_sentences))
+                    ctx_start = max(0, sentence_id - ctx)
+                    ctx_end = min(len(spans), sentence_id + ctx + 1)
+                    sentence_ids = list(range(ctx_start, ctx_end))
+                    snippet_lines = [
+                        f"{spans[sid].sentence_id} {_normalize_sentence_text(spans[sid].text)}"
+                        for sid in sentence_ids
+                    ]
+                    snippet = "\n".join(snippet_lines)
 
                     doc_matches.append({
-                        "start_token": start_token,
-                        "end_token": end_token,
+                        "start_sentence": ctx_start,
+                        "end_sentence": ctx_end,
+                        "match_sentence": sentence_id,
                         "start_char": start_char,
                         "end_char": end_char,
+                        "sentence_ids": sentence_ids,
                         "snippet": snippet,
                         "groups": m.groupdict(),
                         "pattern": pattern,
@@ -505,11 +616,10 @@ class UpdateChecklistTool(BaseTool):
                                             "items": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "text": {"type": "string"},
-                                                    "source_document": {"type": "integer"},
-                                                    "location": {"type": "string"},
+                                                    "document_id": {"type": "integer"},
+                                                    "sentence_ids": {"type": "array", "items": {"type": "integer"}},
                                                 },
-                                                "required": ["text", "source_document", "location"],
+                                                "required": ["document_id", "sentence_ids"],
                                             },
                                         },
                                         "value": {"type": "string"},
@@ -546,7 +656,14 @@ class UpdateChecklistTool(BaseTool):
             key = p.get("key")
             items = p.get("extracted", [])
             try:
-                self.store.update_key(key, items)
+                resolved_items = []
+                for entry in items:
+                    evidence_list = entry.get("evidence", [])
+                    resolved_evidence = [
+                        _resolve_sentence_evidence(self.case_id, ev) for ev in evidence_list
+                    ]
+                    resolved_items.append({"value": entry.get("value", ""), "evidence": resolved_evidence})
+                self.store.update_key(key, resolved_items)
                 updated_keys.append(key)
             except Exception as e:
                 errors.append(f"Failed to update {key}: {e}")
@@ -584,11 +701,10 @@ class AppendChecklistTool(BaseTool):
                                             "items": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "text": {"type": "string"},
-                                                    "source_document": {"type": "integer"},
-                                                    "location": {"type": "string"},
+                                                    "document_id": {"type": "integer"},
+                                                    "sentence_ids": {"type": "array", "items": {"type": "integer"}},
                                                 },
-                                                "required": ["text", "source_document", "location"],
+                                                "required": ["document_id", "sentence_ids"],
                                             },
                                         },
                                         "value": {"type": "string"},
@@ -625,7 +741,14 @@ class AppendChecklistTool(BaseTool):
             key = p.get("key")
             items = p.get("extracted", [])
             try:
-                self.store.append_to_key(key, items)
+                resolved_items = []
+                for entry in items:
+                    evidence_list = entry.get("evidence", [])
+                    resolved_evidence = [
+                        _resolve_sentence_evidence(self.case_id, ev) for ev in evidence_list
+                    ]
+                    resolved_items.append({"value": entry.get("value", ""), "evidence": resolved_evidence})
+                self.store.append_to_key(key, resolved_items)
                 updated_keys.append(key)
             except Exception as e:
                 errors.append(f"Failed to append {key}: {e}")

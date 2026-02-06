@@ -7,8 +7,8 @@ import useChecklistStore from './useChecklistStore';
 
 const WorkspaceStateContext = createContext(null);
 
-export const WorkspaceStateProvider = ({ children, caseId, uploadedDocuments }) => {
-    const documents = useDocumentsStore({ caseId, initialUploads: uploadedDocuments });
+export const WorkspaceStateProvider = ({ children, caseId }) => {
+    const documents = useDocumentsStore({ caseId });
     const summary = useSummaryStore({ caseId: documents.caseId });
     const highlight = useHighlightStore({ summary, documents });
     const chat = useChatStore({ summary, documents, highlight });

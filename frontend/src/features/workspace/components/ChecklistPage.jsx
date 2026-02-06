@@ -1,9 +1,83 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useChecklist, useDocuments, useHighlight } from '../state/WorkspaceProvider';
 
+const parseDocumentId = (value) => {
+    if (value == null) {
+        return null;
+    }
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+};
+
+const parseOffset = (value) => {
+    if (value == null) {
+        return null;
+    }
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+};
+
+const normaliseImportedItems = (rawItems, allowedCategoryIds, documentLookup) => {
+    if (!Array.isArray(rawItems)) {
+        throw new Error('Checklist import must include an items array.');
+    }
+    const items = [];
+    const errors = [];
+    rawItems.forEach((entry) => {
+        if (!entry || typeof entry !== 'object') {
+            errors.push('Checklist items must be objects.');
+            return;
+        }
+        const categoryId = (entry.categoryId ?? entry.category_id ?? entry.binId ?? entry.bin_id ?? '').toString();
+        if (!allowedCategoryIds.has(categoryId)) {
+            errors.push(`Unknown category "${categoryId}".`);
+            return;
+        }
+        const value = typeof entry.value === 'string' ? entry.value : (entry.text ?? '');
+        if (!value) {
+            errors.push(`Checklist item in category "${categoryId}" is missing text.`);
+            return;
+        }
+        const documentId = parseDocumentId(entry.documentId ?? entry.document_id);
+        const startOffset = parseOffset(entry.startOffset ?? entry.start_offset);
+        const endOffset = parseOffset(entry.endOffset ?? entry.end_offset);
+        if (documentId == null) {
+            errors.push(`Checklist item "${value}" is missing documentId.`);
+            return;
+        }
+        if (startOffset == null || endOffset == null || startOffset >= endOffset) {
+            errors.push(`Checklist item "${value}" has invalid offsets.`);
+            return;
+        }
+        const doc = documentLookup[documentId];
+        if (!doc) {
+            errors.push(`Checklist item "${value}" references unknown document ${documentId}.`);
+            return;
+        }
+        if (endOffset > doc.content.length) {
+            errors.push(`Checklist item "${value}" has offsets outside document bounds.`);
+            return;
+        }
+        items.push({
+            id: typeof entry.id === 'string' && entry.id.trim().length ? entry.id : `local::${crypto.randomUUID()}`,
+            categoryId,
+            value,
+            text: typeof entry.text === 'string' ? entry.text : value,
+            documentId,
+            startOffset,
+            endOffset
+        });
+    });
+    if (errors.length) {
+        const suffix = errors.length > 1 ? ` (and ${errors.length - 1} more)` : '';
+        throw new Error(`Checklist import failed: ${errors[0]}${suffix}`);
+    }
+    return items;
+};
+
 const ChecklistPanel = ({ isActive }) => {
-    const { categories, isLoading, addItem, deleteItem } = useChecklist();
+    const { categories, items, isLoading, addItem, deleteItem, replaceItems } = useChecklist();
     const documents = useDocuments();
     const {
         selectedDocumentText,
@@ -18,6 +92,7 @@ const ChecklistPanel = ({ isActive }) => {
     const [expandedEvidence, setExpandedEvidence] = useState(() => new Set());
     const [valueInput, setValueInput] = useState('');
     const [selectedCategoryId, setSelectedCategoryId] = useState('');
+    const fileInputRef = useRef(null);
 
     useEffect(() => {
         if (!selectedDocumentText) {
@@ -44,11 +119,31 @@ const ChecklistPanel = ({ isActive }) => {
         }
     }, [deleteItem]);
 
-    useEffect(() => {
-        if (isPickerOpen && categories.length > 0 && !selectedCategoryId) {
-            setSelectedCategoryId(categories[0].id);
+    const handleExport = useCallback(() => {
+        setActionError(null);
+        try {
+            const payload = {
+                caseId: documents.caseId,
+                items
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `checklist-${documents.caseId || 'case'}.json`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            setActionError(error.message || 'Failed to export checklist.');
         }
-    }, [categories, isPickerOpen, selectedCategoryId]);
+    }, [documents.caseId, items]);
+
+    const handleImportClick = useCallback(() => {
+        setActionError(null);
+        fileInputRef.current?.click();
+    }, []);
 
     const documentLookup = useMemo(() => {
         const map = {};
@@ -57,6 +152,30 @@ const ChecklistPanel = ({ isActive }) => {
         });
         return map;
     }, [documents.documents]);
+
+    const handleImportFile = useCallback(async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) {
+            return;
+        }
+        try {
+            const text = await file.text();
+            const payload = JSON.parse(text);
+            const allowedCategories = new Set(categories.map((category) => category.id));
+            const importedItems = normaliseImportedItems(payload.items ?? payload, allowedCategories, documentLookup);
+            replaceItems(importedItems);
+        } catch (error) {
+            setActionError(error.message || 'Failed to import checklist.');
+        } finally {
+            event.target.value = '';
+        }
+    }, [categories, documentLookup, replaceItems]);
+
+    useEffect(() => {
+        if (isPickerOpen && categories.length > 0 && !selectedCategoryId) {
+            setSelectedCategoryId(categories[0].id);
+        }
+    }, [categories, isPickerOpen, selectedCategoryId]);
 
     const resolveDocumentLabel = useCallback((documentId) => {
         if (documentId == null) {
@@ -177,9 +296,11 @@ const ChecklistPanel = ({ isActive }) => {
         return (
             <button
                 type="button"
+                data-preserve-selection="true"
                 className="fixed z-50 -translate-x-1/2 rounded-full bg-[var(--color-accent)] px-3 py-1 text-xs font-semibold text-[var(--color-text-inverse)] shadow-lg hover:bg-[var(--color-accent-hover)]"
                 style={style}
                 onClick={handleOpenModal}
+                onMouseDown={(event) => event.preventDefault()}
             >
                 + Add item
             </button>
@@ -200,9 +321,25 @@ const ChecklistPanel = ({ isActive }) => {
                         <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Document Checklist</h2>
                         <p className="text-xs text-[var(--color-text-muted)]">Review extracted items or add your own from document spans.</p>
                     </div>
-                    {isLoading && (
-                        <span className="text-xs text-[var(--color-accent)] font-medium">Loading…</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handleImportClick}
+                            className="rounded border border-[var(--color-border)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] hover:border-[var(--color-border-strong)]"
+                        >
+                            Import
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleExport}
+                            className="rounded border border-[var(--color-border)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] hover:border-[var(--color-border-strong)]"
+                        >
+                            Export
+                        </button>
+                        {isLoading && (
+                            <span className="text-xs text-[var(--color-accent)] font-medium">Loading…</span>
+                        )}
+                    </div>
                 </div>
                 <p className="mt-2 text-[11px] text-[var(--color-text-secondary)]">
                     Refine this checklist from document spans; generation pulls directly from here.
@@ -312,9 +449,19 @@ const ChecklistPanel = ({ isActive }) => {
                         {actionError}
                     </div>
                 )}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/json"
+                    onChange={handleImportFile}
+                    className="hidden"
+                />
                 {isPickerOpen && selectionAvailable && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-overlay-scrim)] px-4">
-                        <div className="w-full max-w-xl rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-2xl">
+                        <div
+                            className="w-full max-w-xl rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-2xl"
+                            data-preserve-selection="true"
+                        >
                             <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
                                 <div>
                                     <p className="text-sm font-semibold text-[var(--color-text-primary)]">Add checklist item</p>

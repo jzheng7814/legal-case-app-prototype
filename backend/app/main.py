@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.db.session import init_db
 from app.eventing import get_event_producer, init_event_system, shutdown_event_system
 from app.services.llm import llm_service
 
@@ -26,6 +27,7 @@ app.include_router(api_router)
 
 @app.on_event("startup")
 async def startup_event() -> None:
+    init_db()
     await init_event_system(settings)
     producer.info(
         "Backend startup",

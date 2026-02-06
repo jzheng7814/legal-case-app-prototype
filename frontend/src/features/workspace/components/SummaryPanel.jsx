@@ -45,11 +45,15 @@ const SummaryPanel = () => {
     const handleGenerateSummary = useCallback(async () => {
         setLocalError(null);
         try {
-            await generateAISummary({ caseId: activeCaseId, documents: contextDocuments });
+            await generateAISummary({
+                caseId: activeCaseId,
+                documents: contextDocuments,
+                checklist: { categories }
+            });
         } catch (error) {
             setLocalError(error.message || 'Failed to generate summary.');
         }
-    }, [activeCaseId, contextDocuments, generateAISummary]);
+    }, [activeCaseId, contextDocuments, generateAISummary, categories]);
 
     useEffect(() => {
         if (isEditMode || (patchAction && patchAction.isStale)) {

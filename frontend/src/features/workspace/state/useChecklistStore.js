@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-    addChecklistItem,
-    deleteChecklistItem,
-    fetchChecklist
-} from '../../../services/apiClient';
-import { DEFAULT_CASE_ID } from '../../../services/documentService';
+import { fetchChecklist } from '../../../services/apiClient';
 
-const normaliseCaseId = (value) => {
-    const trimmed = (value || '').trim();
-    return trimmed.length > 0 ? trimmed : DEFAULT_CASE_ID;
+const normaliseCaseId = (value) => String(value ?? '').trim();
+
+const requireCaseId = (value) => {
+    const trimmed = normaliseCaseId(value);
+    if (!trimmed) {
+        throw new Error('Case ID is required to fetch checklist data.');
+    }
+    return trimmed;
 };
 
 const parseDocumentId = (value) => {
@@ -41,9 +41,47 @@ const normaliseCategories = (payload) => {
     }));
 };
 
-const useChecklistStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
-    const [categories, setCategories] = useState([]);
-    const [signature, setSignature] = useState(null);
+const flattenCategories = (categories = []) => {
+    const items = [];
+    categories.forEach((category) => {
+        const values = Array.isArray(category.values) ? category.values : [];
+        values.forEach((value) => {
+            items.push({
+                id: value.id,
+                categoryId: category.id,
+                value: value.value ?? '',
+                text: value.text ?? value.value ?? '',
+                documentId: parseDocumentId(value.documentId ?? value.document_id),
+                startOffset: value.startOffset ?? value.start_offset ?? null,
+                endOffset: value.endOffset ?? value.end_offset ?? null
+            });
+        });
+    });
+    return items;
+};
+
+const buildCategories = (meta = [], items = []) =>
+    meta.map((category) => ({
+        id: category.id,
+        label: category.label,
+        color: category.color,
+        values: items
+            .filter((item) => item.categoryId === category.id)
+            .map((item) => ({
+                id: item.id,
+                value: item.value ?? '',
+                text: item.text ?? item.value ?? '',
+                documentId: parseDocumentId(item.documentId),
+                startOffset: item.startOffset ?? null,
+                endOffset: item.endOffset ?? null
+            }))
+    }));
+
+const buildItemId = () => `local::${crypto.randomUUID()}`;
+
+const useChecklistStore = ({ caseId } = {}) => {
+    const [categoryMeta, setCategoryMeta] = useState([]);
+    const [items, setItems] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -51,65 +89,73 @@ const useChecklistStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
 
     const hydrateResponse = useCallback((response) => {
         if (!response) {
-            setCategories([]);
-            setSignature(null);
+            setCategoryMeta([]);
+            setItems([]);
             return;
         }
-        setCategories(normaliseCategories(response));
-        setSignature(response.signature ?? null);
+        const categories = normaliseCategories(response);
+        setCategoryMeta(categories.map((category) => ({
+            id: category.id,
+            label: category.label,
+            color: category.color
+        })));
+        setItems(flattenCategories(categories));
     }, []);
 
     const refreshChecklist = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetchChecklist(resolvedCaseId);
+            const targetCaseId = requireCaseId(resolvedCaseId);
+            const response = await fetchChecklist(targetCaseId);
             hydrateResponse(response);
             return response;
         } catch (err) {
             setError(err);
-            throw err;
+            return null;
         } finally {
             setIsLoading(false);
         }
     }, [hydrateResponse, resolvedCaseId]);
 
     const addItem = useCallback(async (payload) => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const response = await addChecklistItem(resolvedCaseId, payload);
-            hydrateResponse(response);
-            return response;
-        } catch (err) {
-            setError(err);
-            throw err;
-        } finally {
-            setIsLoading(false);
+        const trimmedValue = payload?.text?.trim();
+        if (!trimmedValue) {
+            throw new Error('Checklist text is required.');
         }
-    }, [hydrateResponse, resolvedCaseId]);
+        if (!payload?.categoryId) {
+            throw new Error('Checklist category is required.');
+        }
+        const nextItem = {
+            id: buildItemId(),
+            categoryId: payload.categoryId,
+            value: trimmedValue,
+            text: trimmedValue,
+            documentId: parseDocumentId(payload.documentId),
+            startOffset: payload.startOffset ?? null,
+            endOffset: payload.endOffset ?? null
+        };
+        setItems((previous) => [...previous, nextItem]);
+        return nextItem;
+    }, []);
 
     const deleteItem = useCallback(async (valueId) => {
         if (!valueId) {
             return null;
         }
-        setIsLoading(true);
-        setError(null);
-        try {
-            const response = await deleteChecklistItem(resolvedCaseId, valueId);
-            hydrateResponse(response);
-            return response;
-        } catch (err) {
-            setError(err);
-            throw err;
-        } finally {
-            setIsLoading(false);
-        }
-    }, [hydrateResponse, resolvedCaseId]);
+        setItems((previous) => previous.filter((item) => item.id !== valueId));
+        return valueId;
+    }, []);
+
+    const replaceItems = useCallback((nextItems) => {
+        setItems(Array.isArray(nextItems) ? nextItems : []);
+    }, []);
 
     useEffect(() => {
-        refreshChecklist();
+        void refreshChecklist();
     }, [refreshChecklist]);
+
+    const categories = useMemo(() => buildCategories(categoryMeta, items), [categoryMeta, items]);
 
     const highlightsByDocument = useMemo(() => {
         const lookup = {};
@@ -146,12 +192,13 @@ const useChecklistStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
 
     return {
         categories,
-        signature,
+        items,
         isLoading,
         error,
         refreshChecklist,
         addItem,
         deleteItem,
+        replaceItems,
         highlightsByDocument
     };
 };

@@ -23,7 +23,7 @@ system_prompt: |
   Choose exactly one action each turn:
   - If the document catalog is **unknown** → call `list_documents`.
   - If a specific document likely contains a target value, choose ONE:
-    • `read_document` — default choice. Read a targeted window (≤10,000 tokens) in a document.
+    • `read_document` — default choice. Read a targeted window (≤200 sentences) in a document.
     • `search_document_regex` — use this when the target is clearly patternable (e.g., "Case No.", "Filed:", citations).
   - When you have confirmed text for one or more keys:
     - Use `append_checklist` for adds new entries for some checklist items.
@@ -43,9 +43,9 @@ system_prompt: |
   
   # Document Reading Efficiency
   - **NEVER** reread fully visited documents (marked with ✓ Fully Visited).
-  - **NEVER** reread token ranges already viewed (shown as "Viewed tokens: X-Y").
-  - When reading partially visited documents (marked with ◐ Partially Visited), read ONLY unviewed token ranges.
-  - Check the "Viewed tokens" list before calling read_document to avoid redundant reads.
+  - **NEVER** reread sentence ranges already viewed (shown as "Viewed sentences: X-Y").
+  - When reading partially visited documents (marked with ◐ Partially Visited), read ONLY unviewed sentence ranges.
+  - Check the "Viewed sentences" list before calling read_document to avoid redundant reads.
   
   # Write Semantics
   - **Any checklist item can have multiple values**; the `extracted` field is always a list.
@@ -54,9 +54,8 @@ system_prompt: |
   
   # Evidence Requirements
   - **Every extracted entry must include evidence** with:
-    - `text` (verbatim snippet),
-    - `source_document` (document id),
-    - `location` (e.g., page, section, docket entry; include token offsets if available).
+    - `document_id` (integer),
+    - `sentence_ids` (contiguous list of integers; prefer 1–2 sentences when possible).
   
   # Not Applicable Encoding
   - Represent Not Applicable as a **single extracted entry** for that key, set **via `update_checklist`**:
@@ -90,7 +89,7 @@ tool_definitions:
   - type: function
     function:
       name: list_documents
-      description: "Returns all documents with their metadata (type, token_count, coverage). Use first if the catalog is unknown."
+      description: "Returns all documents with their metadata (type, sentence_count, coverage). Use first if the catalog is unknown."
       parameters:
         type: object
         properties: {}
@@ -99,25 +98,25 @@ tool_definitions:
   - type: function
     function:
       name: read_document
-      description: "Reads a specific token range from a document. start_token is inclusive; end_token is exclusive. Maximum range: 10,000 tokens per call."
+      description: "Reads a specific sentence range from a document. start_sentence is inclusive; end_sentence is exclusive. Maximum range: 200 sentences per call."
       parameters:
         type: object
         properties:
           doc_id:
             type: number
             description: "ID of the document to read"
-          start_token:
+          start_sentence:
             type: number
-            description: "Starting token position (inclusive)"
-          end_token:
+            description: "Starting sentence id (inclusive)"
+          end_sentence:
             type: number
-            description: "Ending token position (exclusive)"
-        required: ["doc_id", "start_token", "end_token"]
+            description: "Ending sentence id (exclusive)"
+        required: ["doc_id", "start_sentence", "end_sentence"]
 
   - type: function
     function:
       name: search_document_regex
-      description: "Searches documents using a regex pattern. Returns top_k matches per document with ~context_tokens before/after each match. Use to jump to likely sections; then confirm with read_document. Prefer precise, anchored patterns tied to document structure; avoid broad multi-term OR patterns. Supports three patterns: 1) doc_ids array - search specific documents, 2) doc_id=-1 - search all documents, 3) doc_id=<id> - search single document."
+      description: "Searches documents using a regex pattern. Returns top_k matches per document with ~context_sentences before/after each match. Use to jump to likely sections; then confirm with read_document. Prefer precise, anchored patterns tied to document structure; avoid broad multi-term OR patterns. Supports three patterns: 1) doc_ids array - search specific documents, 2) doc_id=-1 - search all documents, 3) doc_id=<id> - search single document."
       parameters:
         type: object
         properties:
@@ -145,12 +144,12 @@ tool_definitions:
             default: 5
             minimum: 1
             maximum: 20
-          context_tokens:
+          context_sentences:
             type: number
-            description: "Approximate context tokens around each match (min: 100, max: 1000)"
-            default: 200
-            minimum: 100
-            maximum: 1000
+            description: "Approximate context sentences around each match (min: 0, max: 20)"
+            default: 2
+            minimum: 0
+            maximum: 20
         required: ["pattern"]
 
   - type: function
@@ -200,16 +199,15 @@ tool_definitions:
                         items:
                           type: object
                           properties:
-                            text:
-                              type: string
-                              description: "Verbatim text from document"
-                            source_document:
+                            document_id:
                               type: number
                               description: "ID of source document"
-                            location:
-                              type: string
-                              description: "Location in document (e.g., page, section)"
-                          required: ["text", "source_document", "location"]
+                            sentence_ids:
+                              type: array
+                              items:
+                                type: number
+                              description: "Contiguous sentence ids supporting this value"
+                          required: ["document_id", "sentence_ids"]
                       value:
                         type: string
                         description: "The extracted value"
@@ -245,16 +243,15 @@ tool_definitions:
                         items:
                           type: object
                           properties:
-                            text:
-                              type: string
-                              description: "Verbatim text from document"
-                            source_document:
+                            document_id:
                               type: number
                               description: "ID of source document"
-                            location:
-                              type: string
-                              description: "Location in document (e.g., page, section)"
-                          required: ["text", "source_document", "location"]
+                            sentence_ids:
+                              type: array
+                              items:
+                                type: number
+                              description: "Contiguous sentence ids supporting this value"
+                          required: ["document_id", "sentence_ids"]
                       value:
                         type: string
                         description: "The extracted value"

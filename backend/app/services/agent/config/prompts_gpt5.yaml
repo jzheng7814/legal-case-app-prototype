@@ -20,7 +20,7 @@ system_prompt: |
   Choose exactly one action each turn:
   - If the document catalog is **unknown** → call `list_documents`.
   - If a specific document likely contains a target value, choose ONE:
-    • `read_document` — default choice. Read a targeted window (≤10,000 tokens) in a document.
+    • `read_document` — default choice. Read a targeted window (≤200 sentences) in a document.
     • `search_document_regex` — use this when the target is clearly patternable (e.g., "Case No.", "Filed:", citations).
   - When you have confirmed text for one or more keys:
     - Use `append_checklist` for adds new entries for some checklist items.
@@ -40,9 +40,9 @@ system_prompt: |
 
   # Document Reading Efficiency
   - **NEVER** reread fully visited documents (marked with ✓ Fully Visited).
-  - **NEVER** reread token ranges already viewed (shown as "Viewed tokens: X-Y").
-  - When reading partially visited documents (marked with ◐ Partially Visited), read ONLY unviewed token ranges.
-  - Check the "Viewed tokens" list before calling read_document to avoid redundant reads.
+  - **NEVER** reread sentence ranges already viewed (shown as "Viewed sentences: X-Y").
+  - When reading partially visited documents (marked with ◐ Partially Visited), read ONLY unviewed sentence ranges.
+  - Check the "Viewed sentences" list before calling read_document to avoid redundant reads.
 
   # Write Semantics
   - **Any checklist item can have multiple values**; the `extracted` field is always a list.
@@ -51,9 +51,8 @@ system_prompt: |
 
   # Evidence Requirements
   - **Every extracted entry must include evidence** with:
-    - `text` (verbatim snippet),
-    - `source_document` (document id),
-    - `location` (e.g., page, section, docket entry; include token offsets if available).
+    - `document_id` (integer),
+    - `sentence_ids` (contiguous list of integers; prefer 1–2 sentences when possible).
 
   # Not Applicable Encoding
   - Represent Not Applicable as a **single extracted entry** for that key, set **via `update_checklist`**:

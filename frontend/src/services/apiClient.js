@@ -58,19 +58,6 @@ export async function fetchChecklistStatus(caseId) {
     return request(`/cases/${caseId}/checklist/status`);
 }
 
-export async function addChecklistItem(caseId, body) {
-    return request(`/cases/${caseId}/checklist/items`, {
-        method: 'POST',
-        body: JSON.stringify(body)
-    });
-}
-
-export async function deleteChecklistItem(caseId, valueId) {
-    return request(`/cases/${caseId}/checklist/items/${encodeURIComponent(valueId)}`, {
-        method: 'DELETE'
-    });
-}
-
 export async function createChatSession() {
     return request('/chat/session', { method: 'POST' });
 }

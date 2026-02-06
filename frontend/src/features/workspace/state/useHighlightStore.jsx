@@ -193,6 +193,9 @@ const useHighlightStore = ({ summary, documents }) => {
         };
 
         const handleClick = (event) => {
+            if (event.target?.closest?.('[data-preserve-selection="true"]')) {
+                return;
+            }
             const summaryEl = summary.summaryRef.current;
             const documentEl = documents.documentRef.current;
             if (

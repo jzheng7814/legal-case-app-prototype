@@ -9,10 +9,9 @@ from typing import Dict, List, Optional
 from fastapi import BackgroundTasks, HTTPException
 
 from app.eventing import get_event_producer
-from app.schemas.checklists import EvidenceCollection, EvidenceItem
+from app.schemas.checklists import EvidenceCategoryCollection, EvidenceCollection, EvidenceItem, EvidencePointer
 from app.schemas.documents import DocumentReference
 from app.schemas.summary import SummaryJob, SummaryJobStatus, SummaryRequest
-from app.services.checklists import extract_document_checklists
 from app.services.documents import get_document
 from app.services.llm import llm_service
 
@@ -60,7 +59,7 @@ async def _run_summary_job(job_id: str, case_id: str, request: SummaryRequest) -
 
     try:
         sorted_docs = sorted(request.documents, key=_document_sort_key)
-        evidence = await extract_document_checklists(case_id, sorted_docs)
+        evidence = _flatten_checklist(request.checklist, sorted_docs)
         doc_titles = _build_document_titles(case_id, sorted_docs)
         ordered_items = _order_evidence_items(evidence, doc_titles)
         evidence_block = _format_evidence_block(ordered_items, doc_titles)
@@ -149,6 +148,40 @@ def _build_document_titles(case_id: str, documents: List[DocumentReference]) -> 
                 display_title = ref.id
         titles[int(ref.id)] = str(display_title)
     return titles
+
+
+def _flatten_checklist(
+    checklist: EvidenceCategoryCollection, documents: List[DocumentReference]
+) -> EvidenceCollection:
+    doc_lookup = {int(doc.id): doc.content for doc in documents}
+    items: List[EvidenceItem] = []
+    for category in checklist.categories:
+        for value in category.values:
+            if value.document_id is None:
+                raise ValueError("Checklist item missing documentId.")
+            if value.start_offset is None or value.end_offset is None:
+                raise ValueError("Checklist item missing offsets.")
+            if value.start_offset >= value.end_offset:
+                raise ValueError("Checklist item has invalid offsets.")
+            doc_text = doc_lookup.get(int(value.document_id))
+            if doc_text is None:
+                raise ValueError("Checklist item references missing document.")
+            if value.end_offset > len(doc_text):
+                raise ValueError("Checklist item offsets outside document bounds.")
+            evidence_text = doc_text[value.start_offset:value.end_offset]
+            items.append(
+                EvidenceItem(
+                    bin_id=category.id,
+                    value=value.value,
+                    evidence=EvidencePointer(
+                        document_id=int(value.document_id),
+                        start_offset=value.start_offset,
+                        end_offset=value.end_offset,
+                        text=evidence_text,
+                    ),
+                )
+            )
+    return EvidenceCollection(items=items)
 
 
 def _order_evidence_items(evidence: EvidenceCollection, titles: Dict[int, str]) -> List[EvidenceItem]:

@@ -63,8 +63,8 @@ class Settings(BaseSettings):
     app_name: str = "legal-case-backend"
     environment: str = "development"
     use_mock_llm: bool = False
-    document_root: str = "data/documents"
     config_path: str = "config/app.config.json"
+    database_url: str
     openai_api_key: Optional[str] = None
     clearinghouse_api_key: Optional[str] = None
 

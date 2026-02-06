@@ -6,3 +6,5 @@ python-dotenv==1.0.1
 openai>=1.44.0
 rapidfuzz==3.6.1
 pyyaml==6.0.1
+nltk==3.8.1
+SQLAlchemy==2.0.30

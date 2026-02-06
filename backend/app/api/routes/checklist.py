@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter
 
 from app.eventing import get_event_producer
-from app.schemas.checklists import EvidenceCategoryCollection, ChecklistItemCreateRequest, ChecklistStatusResponse
+from app.schemas.checklists import EvidenceCategoryCollection, ChecklistStatusResponse
 from app.schemas.documents import DocumentReference
 from app.services import checklists as checklist_service
 from app.services.documents import list_documents, list_cached_documents
@@ -49,20 +49,6 @@ async def get_case_checklist(case_id: str) -> EvidenceCategoryCollection:
     document_refs = _build_document_references(case_id)
     record = await checklist_service.ensure_document_checklist_record(case_id, document_refs)
     return checklist_service.build_category_collection(record)
-
-
-@router.post("/{case_id}/checklist/items", response_model=EvidenceCategoryCollection)
-async def add_checklist_item(case_id: str, payload: ChecklistItemCreateRequest) -> EvidenceCategoryCollection:
-    document_refs = _build_document_references(case_id)
-    record = await checklist_service.ensure_document_checklist_record(case_id, document_refs)
-    updated = checklist_service.append_user_checklist_value(case_id, record, payload)
-    return checklist_service.build_category_collection(updated)
-
-
-@router.delete("/{case_id}/checklist/items/{value_id}", response_model=EvidenceCategoryCollection)
-async def delete_checklist_item(case_id: str, value_id: str) -> EvidenceCategoryCollection:
-    updated = await checklist_service.remove_checklist_value(case_id, value_id)
-    return checklist_service.build_category_collection(updated)
 
 
 @router.get("/{case_id}/checklist/status", response_model=ChecklistStatusResponse)

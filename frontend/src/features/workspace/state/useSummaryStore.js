@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { diffWordsWithSpace } from 'diff';
 import { getSummaryJob, startSummaryJob } from '../../../services/apiClient';
-import { DEFAULT_CASE_ID } from '../../../services/documentService';
 
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 600000;
 
-const normaliseCaseId = (value) => {
-    const trimmed = (value || '').trim();
-    return trimmed.length > 0 ? trimmed : DEFAULT_CASE_ID;
+const normaliseCaseId = (value) => String(value ?? '').trim();
+
+const requireCaseId = (value) => {
+    const trimmed = normaliseCaseId(value);
+    if (!trimmed) {
+        throw new Error('Case ID is required for summary operations.');
+    }
+    return trimmed;
 };
 
 const buildDocumentPayload = (documents = []) =>
@@ -180,7 +184,7 @@ const hydratePatchAction = (action) => {
     };
 };
 
-const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
+const useSummaryStore = ({ caseId } = {}) => {
     const [summaryText, setSummaryTextState] = useState('');
     const [isEditMode, setIsEditMode] = useState(false);
     const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -378,7 +382,7 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
     const pollSummaryJob = useCallback(async (caseIdentifier, jobId) => {
         const startedAt = Date.now();
         let currentJob;
-        const normalisedCaseId = normaliseCaseId(caseIdentifier);
+        const normalisedCaseId = requireCaseId(caseIdentifier);
 
         while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
             currentJob = await getSummaryJob(normalisedCaseId, jobId).then((response) => response.job);
@@ -392,19 +396,23 @@ const useSummaryStore = ({ caseId = DEFAULT_CASE_ID } = {}) => {
     }, []);
 
     const generateAISummary = useCallback(async (
-        { caseId: overrideCaseId, documents = [], instructions } = {}
+        { caseId: overrideCaseId, documents = [], instructions, checklist } = {}
     ) => {
         if (!documents.length) {
             throw new Error('At least one document is required to generate a summary.');
         }
+        if (!checklist || !Array.isArray(checklist.categories) || checklist.categories.length === 0) {
+            throw new Error('Checklist data is required to generate a summary.');
+        }
 
-        const targetCaseId = normaliseCaseId(overrideCaseId ?? resolvedCaseId);
+        const targetCaseId = requireCaseId(overrideCaseId ?? resolvedCaseId);
         setIsGeneratingSummary(true);
         setLastSummaryError(null);
 
         try {
             const requestBody = {
                 documents: buildDocumentPayload(documents),
+                checklist,
                 ...(instructions ? { instructions } : {})
             };
             const { job } = await startSummaryJob(targetCaseId, requestBody);

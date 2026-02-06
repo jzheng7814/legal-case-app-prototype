@@ -87,11 +87,11 @@ class SnapshotFormatter:
         return status
 
     @staticmethod
-    def _calculate_coverage_tokens(token_ranges: list) -> int:
-        if not token_ranges:
+    def _calculate_coverage_units(ranges: list) -> int:
+        if not ranges:
             return 0
 
-        sorted_ranges = sorted(token_ranges, key=lambda x: x[0])
+        sorted_ranges = sorted(ranges, key=lambda x: x[0])
         merged = []
 
         for start, end in sorted_ranges:
@@ -114,10 +114,10 @@ No documents discovered yet."""
             ranges = doc.coverage.token_ranges if (doc.coverage and doc.coverage.token_ranges) else []
 
             if doc.visited and ranges:
-                covered_tokens = SnapshotFormatter._calculate_coverage_tokens(ranges)
-                coverage_percentage = (covered_tokens / doc.token_count * 100) if doc.token_count > 0 else 0
+                covered_units = SnapshotFormatter._calculate_coverage_units(ranges)
+                coverage_percentage = (covered_units / doc.token_count * 100) if doc.token_count > 0 else 0
 
-                if covered_tokens >= doc.token_count:
+                if covered_units >= doc.token_count:
                     status = "✓ Fully Visited"
                 else:
                     status = "◐ Partially Visited"
@@ -126,12 +126,12 @@ No documents discovered yet."""
                 coverage_percentage = 0
 
             lines.append(
-                f"- **{doc.name}** (ID {doc.id}) [{doc.type}] - {doc.token_count:,} tokens - {status}"
+                f"- **{doc.name}** (ID {doc.id}) [{doc.type}] - {doc.token_count:,} sentences - {status}"
             )
 
             if doc.visited and ranges:
                 range_str = ", ".join([f"{start}-{end}" for start, end in ranges])
-                lines.append(f"  Viewed tokens: {range_str} ({coverage_percentage:.0f}% coverage)")
+                lines.append(f"  Viewed sentences: {range_str} ({coverage_percentage:.0f}% coverage)")
 
         return "\n".join(lines)
 
@@ -247,9 +247,9 @@ No documents discovered yet."""
         elif action.tool == "read_document":
             if action.target:
                 doc_id = action.target.get("doc_id")
-                start = action.target.get("start_token", 0)
-                end = action.target.get("end_token", 0)
-                line_parts.append(f"on {doc_id} (tokens {start}-{end})")
+                start = action.target.get("start_sentence", 0)
+                end = action.target.get("end_sentence", 0)
+                line_parts.append(f"on {doc_id} (sentences {start}-{end})")
 
         elif action.tool in ["update_checklist", "append_checklist"]:
             if action.changed_keys:
@@ -320,7 +320,7 @@ No documents discovered yet."""
             if tool == "read_document":
                 full_text = result.get("text", "")
                 lines.append(
-                    f"{indent}Read from **{result.get('doc_id', 'unknown')}** (tokens {result.get('start_token', 0)}-{result.get('end_token', 0)}):"
+                    f"{indent}Read from **{result.get('doc_id', 'unknown')}** (sentences {result.get('start_sentence', 0)}-{result.get('end_sentence', 0)}):"
                 )
                 lines.append(f"{indent}```")
                 for text_line in full_text.split("\n"):
@@ -357,7 +357,7 @@ No documents discovered yet."""
                             for i, match in enumerate(matches[:matches_to_show], 1):
                                 snippet = match.get("snippet", "")
                                 lines.append(
-                                    f"{indent}  Match {i} (tokens {match.get('start_token', 0)}-{match.get('end_token', 0)}):"
+                                    f"{indent}  Match {i} (sentences {match.get('start_sentence', 0)}-{match.get('end_sentence', 0)}):"
                                 )
                                 lines.append(f"{indent}  ```")
                                 for snippet_line in snippet.split("\n"):
@@ -515,10 +515,10 @@ No documents discovered yet."""
             return "Found 0 matches"
 
         if action.tool == "read_document":
-            start = result.get("start_token", 0)
-            end = result.get("end_token", 0)
+            start = result.get("start_sentence", 0)
+            end = result.get("end_sentence", 0)
             doc_id = result.get("doc_id", "unknown")
-            return f"Read {end - start} tokens from {doc_id}"
+            return f"Read {end - start} sentences from {doc_id}"
 
         if action.tool == "get_checklist":
             stats = result.get("completion_stats", {})

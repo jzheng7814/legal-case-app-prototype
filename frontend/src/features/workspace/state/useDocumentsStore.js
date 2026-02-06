@@ -1,70 +1,46 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DEFAULT_CASE_ID, loadDocuments as loadCaseDocuments, loadDocumentsFromPublic } from '../../../services/documentService';
+import { loadDocuments as loadCaseDocuments } from '../../../services/documentService';
 import { fetchChecklistStatus } from '../../../services/apiClient';
 
-const normaliseCaseId = (value) => {
-    const trimmed = (value || '').trim();
-    return trimmed.length > 0 ? trimmed : DEFAULT_CASE_ID;
-};
+const normaliseCaseId = (value) => String(value ?? '').trim();
 
-const useDocumentsStore = ({ caseId = DEFAULT_CASE_ID, initialUploads = [] } = {}) => {
+const useDocumentsStore = ({ caseId } = {}) => {
     const [currentCaseId, setCurrentCaseId] = useState(normaliseCaseId(caseId));
     const [remoteDocuments, setRemoteDocuments] = useState([]);
-    const [uploadedDocuments, setUploadedDocuments] = useState(initialUploads);
     const [selectedDocument, setSelectedDocument] = useState(null);
     const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
     const [lastError, setLastError] = useState(null);
-    const [documentChecklists, setDocumentChecklists] = useState(null);
     const [documentChecklistStatus, setDocumentChecklistStatus] = useState('idle');
     const documentRef = useRef(null);
 
-    const combinedDocuments = useMemo(
-        () => [...remoteDocuments, ...uploadedDocuments],
-        [remoteDocuments, uploadedDocuments]
-    );
-
     const loadDocuments = useCallback(async (requestedCaseId = currentCaseId) => {
         const resolvedCaseId = normaliseCaseId(requestedCaseId);
+        if (!resolvedCaseId) {
+            const error = new Error('Case ID is required to load documents.');
+            setLastError(error);
+            setRemoteDocuments([]);
+            setDocumentChecklists(null);
+            setDocumentChecklistStatus('error');
+            return;
+        }
         setIsLoadingDocuments(true);
         setLastError(null);
-        setDocumentChecklists(null);
         setDocumentChecklistStatus('pending');
 
         try {
-            const { documents: loadedDocs, documentChecklists: prefetchedChecklists, checklistStatus } =
-                await loadCaseDocuments(resolvedCaseId);
+            const { documents: loadedDocs, checklistStatus } = await loadCaseDocuments(resolvedCaseId);
             setRemoteDocuments(loadedDocs);
             setCurrentCaseId(resolvedCaseId);
-            setDocumentChecklists(prefetchedChecklists ?? null);
             setDocumentChecklistStatus(checklistStatus ?? (loadedDocs.length > 0 ? 'ready' : 'empty'));
         } catch (error) {
-            console.error('Failed to load documents from backend, falling back to public assets.', error);
+            console.error('Failed to load documents from backend.', error);
+            setRemoteDocuments([]);
             setLastError(error);
-            try {
-                const {
-                    documents: fallbackDocs,
-                    documentChecklists: prefetchedChecklists,
-                    checklistStatus
-                } = await loadDocumentsFromPublic();
-                setRemoteDocuments(fallbackDocs);
-                setCurrentCaseId(resolvedCaseId);
-                setDocumentChecklists(prefetchedChecklists ?? null);
-                setDocumentChecklistStatus(checklistStatus ?? (fallbackDocs.length > 0 ? 'fallback' : 'empty'));
-            } catch (fallbackError) {
-                console.error('Fallback document loading failed', fallbackError);
-                setRemoteDocuments([]);
-                setLastError(fallbackError);
-                setDocumentChecklists(null);
-                setDocumentChecklistStatus('error');
-            }
+            setDocumentChecklistStatus('error');
         } finally {
             setIsLoadingDocuments(false);
         }
     }, [currentCaseId]);
-
-    useEffect(() => {
-        setUploadedDocuments(initialUploads);
-    }, [initialUploads]);
 
     useEffect(() => {
         const resolved = normaliseCaseId(caseId);
@@ -72,7 +48,7 @@ const useDocumentsStore = ({ caseId = DEFAULT_CASE_ID, initialUploads = [] } = {
     }, [caseId]);
 
     useEffect(() => {
-        loadDocuments(currentCaseId);
+        void loadDocuments(currentCaseId);
     }, [currentCaseId, loadDocuments]);
 
     useEffect(() => {
@@ -86,23 +62,16 @@ const useDocumentsStore = ({ caseId = DEFAULT_CASE_ID, initialUploads = [] } = {
 
         const pollForChecklistStatus = async () => {
             try {
-                const response = await fetchChecklistStatus(currentCaseId);
-                if (cancelled) {
-                    return;
-                }
-                const checklistPayload = response?.documentChecklists ?? response?.document_checklists ?? null;
-                const status = response?.checklistStatus ?? response?.checklist_status ?? 'pending';
+            const response = await fetchChecklistStatus(currentCaseId);
+            if (cancelled) {
+                return;
+            }
+            const status = response?.checklistStatus ?? response?.checklist_status ?? 'pending';
 
-                if (checklistPayload) {
-                    setDocumentChecklists(checklistPayload);
-                    setDocumentChecklistStatus(status || 'ready');
-                    return;
-                }
-
-                if (status && status !== 'pending') {
-                    setDocumentChecklistStatus(status);
-                    return;
-                }
+            if (status && status !== 'pending') {
+                setDocumentChecklistStatus(status);
+                return;
+            }
             } catch (error) {
                 if (!cancelled) {
                     console.error('Checklist status polling failed', error);
@@ -126,55 +95,48 @@ const useDocumentsStore = ({ caseId = DEFAULT_CASE_ID, initialUploads = [] } = {
 
     useEffect(() => {
         setSelectedDocument((current) => {
-            if (current != null && combinedDocuments.some((doc) => doc.id === current)) {
+            if (current != null && remoteDocuments.some((doc) => doc.id === current)) {
                 return current;
             }
-            return combinedDocuments.length > 0 ? combinedDocuments[0].id : null;
+            return remoteDocuments.length > 0 ? remoteDocuments[0].id : null;
         });
-    }, [combinedDocuments]);
+    }, [remoteDocuments]);
 
     const getCurrentDocument = useCallback(() => {
         if (isLoadingDocuments) {
             return 'Loading documents...';
         }
-        const doc = combinedDocuments.find((d) => d.id === selectedDocument);
+        const doc = remoteDocuments.find((d) => d.id === selectedDocument);
         if (doc) {
             return doc.content;
         }
-        if (combinedDocuments.length === 0) {
+        if (remoteDocuments.length === 0) {
             return lastError
-                ? 'Failed to load documents. Please try again later or upload files manually.'
+                ? 'Failed to load documents. Please check the case ID and try again.'
                 : 'No documents available.';
         }
         return 'No document selected';
-    }, [combinedDocuments, isLoadingDocuments, lastError, selectedDocument]);
+    }, [remoteDocuments, isLoadingDocuments, lastError, selectedDocument]);
 
     const value = useMemo(() => ({
         caseId: currentCaseId,
-        documents: combinedDocuments,
+        documents: remoteDocuments,
         selectedDocument,
         setSelectedDocument,
         isLoadingDocuments,
         loadDocuments,
         documentRef,
         getCurrentDocument,
-        uploadedDocuments,
-        setUploadedDocuments,
-        remoteDocuments,
         lastError,
-        documentChecklists,
         documentChecklistStatus
     }), [
-        combinedDocuments,
         currentCaseId,
         getCurrentDocument,
         isLoadingDocuments,
         loadDocuments,
         remoteDocuments,
         selectedDocument,
-        uploadedDocuments,
         lastError,
-        documentChecklists,
         documentChecklistStatus
     ]);
 

@@ -31,7 +31,7 @@ producer = get_event_producer(__name__)
 
 
 class AgentDriver:
-    def __init__(self, case_id: str, max_steps: int = 50, config_dir: Optional[Path] = None):
+    def __init__(self, case_id: str, max_steps: int = 100, config_dir: Optional[Path] = None):
         self.case_id = case_id
         self.max_steps = max_steps
         self.config_dir = config_dir or (Path(__file__).parent / "config")

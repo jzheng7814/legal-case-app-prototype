@@ -7,13 +7,14 @@ import DocumentsPanel from './DocumentsPanel';
 import ChatPanel from './ChatPanel';
 import DividerHandle from './components/DividerHandle';
 import ThemeToggle from '../../theme/ThemeToggle';
-import { useHighlight } from './state/WorkspaceProvider';
+import { useDocuments, useHighlight } from './state/WorkspaceProvider';
 
 const PANE_ORDER = ['checklist', 'summary', 'documents'];
 const MIN_SPLIT = 15;
 const MAX_SPLIT = 85;
 
 const SummaryWorkspaceView = ({ onExit }) => {
+    const { lastError } = useDocuments();
     const [visiblePanes, setVisiblePanes] = useState({
         checklist: true,
         summary: true,
@@ -27,6 +28,7 @@ const SummaryWorkspaceView = ({ onExit }) => {
     const [threeSplit, setThreeSplit] = useState({ first: 30, second: 65 });
     const [isChatOpen, setIsChatOpen] = useState(false);
     const workspaceRef = useRef(null);
+    const fatalErrorRef = useRef(false);
     const dragCleanupRef = useRef(null);
     const { setInteractionMode } = useHighlight();
 
@@ -40,6 +42,14 @@ const SummaryWorkspaceView = ({ onExit }) => {
     }, [setInteractionMode, visiblePanes.summary]);
 
     useEffect(() => () => dragCleanupRef.current?.(), []);
+
+    useEffect(() => {
+        if (!lastError || fatalErrorRef.current) {
+            return;
+        }
+        fatalErrorRef.current = true;
+        onExit?.(lastError);
+    }, [lastError, onExit]);
 
     const clampSplit = useCallback((value) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, value)), []);
 
@@ -260,8 +270,8 @@ const SummaryWorkspaceView = ({ onExit }) => {
     );
 };
 
-const SummaryWorkspace = ({ onExit, caseId, uploadedDocuments }) => (
-    <WorkspaceStateProvider caseId={caseId} uploadedDocuments={uploadedDocuments}>
+const SummaryWorkspace = ({ onExit, caseId }) => (
+    <WorkspaceStateProvider caseId={caseId}>
         <SummaryWorkspaceView onExit={onExit} />
     </WorkspaceStateProvider>
 );

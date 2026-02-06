@@ -177,36 +177,7 @@ class EvidenceCategory(BaseModel):
 
 
 class EvidenceCategoryCollection(BaseModel):
-    signature: str
     categories: List[EvidenceCategory]
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class ChecklistItemCreateRequest(BaseModel):
-    category_id: str = Field(..., serialization_alias="categoryId", validation_alias=AliasChoices("categoryId", "category_id"))
-    text: str
-    document_id: Optional[int] = Field(
-        None,
-        serialization_alias="documentId",
-        validation_alias=AliasChoices("documentId", "document_id"),
-    )
-    start_offset: Optional[int] = Field(
-        None,
-        ge=0,
-        serialization_alias="startOffset",
-        validation_alias=AliasChoices("startOffset", "start_offset"),
-    )
-    end_offset: Optional[int] = Field(
-        None,
-        ge=0,
-        serialization_alias="endOffset",
-        validation_alias=AliasChoices("endOffset", "end_offset"),
-    )
-
-    @property
-    def value(self) -> str:
-        return self.text
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 

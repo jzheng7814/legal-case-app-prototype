@@ -84,8 +84,8 @@ class AgentChecklistStore:
                 document_id=int(doc_id),
                 location=ev.get("location"),
                 text=ev.get("text"),
-                start_offset=0,
-                end_offset=0,
+                start_offset=ev.get("start_offset"),
+                end_offset=ev.get("end_offset"),
                 verified=True,
             )
 

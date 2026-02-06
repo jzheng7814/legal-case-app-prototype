@@ -16,6 +16,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - `LEGAL_CASE_OLLAMA_MODEL` – Model tag (e.g. `qwen3:8b`)
 - `LEGAL_CASE_OLLAMA_TIMEOUT_SECONDS` – Request timeout applied to Ollama API calls (defaults to `30`)
 - `LEGAL_CASE_USE_MOCK_LLM` – Set to `true` to use deterministic mock responses
+- `LEGAL_CASE_DATABASE_URL` – SQLAlchemy database URL (e.g. `sqlite:///./app/data/legal_case.db`)
 
 ## Primary Endpoints
 | Method | Route | Description |
@@ -25,5 +26,3 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 | `GET`  | `/cases/{case_id}/summary/{job_id}` | Fetches job status/result |
 | `POST` | `/chat/session` | Creates a chat session |
 | `POST` | `/chat/session/{session_id}/message` | Sends a message and returns AI + user turns |
-
-Demo documents live in `app/data/documents` and are referenced by `catalog.json` until the Clearinghouse integration goes live.

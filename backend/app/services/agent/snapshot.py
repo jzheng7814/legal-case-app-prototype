@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.services.documents import list_cached_documents, Document
 from app.services.agent.state import AgentChecklistStore, Ledger
+from app.services.agent.sentences import get_sentence_count
 from app.services.agent.schemas import (
     Snapshot, RunHeader, TaskInfo, ChecklistItem, ExtractedValue, 
     Evidence, DocumentInfo, DocumentCoverage, ActionRecord
@@ -68,16 +69,14 @@ class SnapshotBuilder:
             # Token count: ideal to have it cached. For now approximation if not in metadata.
             # In ListDocumentsTool we calc it. Here we might repeat work or just use len/4.
             # We'll rely on what's available or re-calc.
-            text_len = len(doc.content or "")
-            estimated_tokens = text_len // 4
-            if self.tokenizer:
-                estimated_tokens = self.tokenizer.count_tokens(doc.content or "")
+            # Sentence count used for read_document ranges.
+            sentence_count = get_sentence_count(self.case_id, doc.id, doc.content or "")
 
             document_infos.append(DocumentInfo(
                 id=doc.id,
                 name=doc.title or f"Document {doc.id}",
                 type=doc.type or "unknown",
-                token_count=estimated_tokens,
+                token_count=sentence_count,
                 visited=visited,
                 coverage=DocumentCoverage(token_ranges=ranges)
             ))

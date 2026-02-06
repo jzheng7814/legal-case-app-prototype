@@ -9,7 +9,7 @@ Systematically extract all applicable checklist items with proper evidence.
 Choose exactly one action each turn:
 - If the document catalog is **unknown** -> call `list_documents`.
 - If a specific document likely contains a target value, choose ONE:
-  • `read_document` — default choice. Read a targeted window (<=10,000 tokens) in a document.
+  • `read_document` — default choice. Read a targeted window (<=200 sentences) in a document.
   • `search_document_regex` — use this when the target is clearly patternable (e.g., "Case No.", "Filed:", citations).
 - When you have confirmed text for one or more keys:
   - Use `append_checklist` to add new entries for some checklist items.
@@ -17,10 +17,14 @@ Choose exactly one action each turn:
 - Periodically use `get_checklist` to assess remaining gaps.
 - Stop when all keys are filled or set to Not Applicable.
 
+# Evidence Requirements
+- Every extracted entry must include evidence with:
+  - `document_id` (integer)
+  - `sentence_ids` (contiguous list of integers; prefer 1–2 sentences when possible)
+
 # Response Guideline
 The user will provide the current Snapshot.
 You must use the provided tools to perform actions. 
 Start every turn by analyzing the situation, then call **exactly one tool**.
 
 To stop the task, you MUST call the `stop_task` tool with a reason. Do not just output text saying you are done.
-
