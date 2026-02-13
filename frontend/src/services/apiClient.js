@@ -58,6 +58,10 @@ export async function fetchChecklistStatus(caseId) {
     return request(`/cases/${caseId}/checklist/status`);
 }
 
+export async function fetchSummaryPrompt() {
+    return request('/cases/summary/prompt');
+}
+
 export async function createChatSession() {
     return request('/chat/session', { method: 'POST' });
 }

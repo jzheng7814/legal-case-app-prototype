@@ -9,9 +9,9 @@ const HomeScreen = ({
     canProceed
 }) => (
     <div className="min-h-screen bg-[var(--color-surface-app)] p-6 text-[var(--color-text-primary)] transition-colors">
-        <div className="max-w-2xl mx-auto space-y-6">
+        <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Legal Case Summarization</h1>
+                <h1 className="text-2xl font-bold">Gavel-Tool: Human-In-The-Loop Legal Case Summarization</h1>
                 <ThemeToggle />
             </div>
 

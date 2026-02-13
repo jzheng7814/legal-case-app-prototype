@@ -4,6 +4,7 @@ import useSummaryStore from './useSummaryStore';
 import useHighlightStore from './useHighlightStore';
 import useChatStore from './useChatStore';
 import useChecklistStore from './useChecklistStore';
+import usePromptStore from './usePromptStore';
 
 const WorkspaceStateContext = createContext(null);
 
@@ -13,10 +14,11 @@ export const WorkspaceStateProvider = ({ children, caseId }) => {
     const highlight = useHighlightStore({ summary, documents });
     const chat = useChatStore({ summary, documents, highlight });
     const checklist = useChecklistStore({ caseId: documents.caseId });
+    const prompt = usePromptStore();
 
     const value = useMemo(
-        () => ({ documents, summary, highlight, chat, checklist }),
-        [documents, summary, highlight, chat, checklist]
+        () => ({ documents, summary, highlight, chat, checklist, prompt }),
+        [documents, summary, highlight, chat, checklist, prompt]
     );
 
     return (
@@ -44,5 +46,7 @@ export const useHighlight = () => useWorkspaceState().highlight;
 export const useChat = () => useWorkspaceState().chat;
 // eslint-disable-next-line react-refresh/only-export-components
 export const useChecklist = () => useWorkspaceState().checklist;
+// eslint-disable-next-line react-refresh/only-export-components
+export const usePrompt = () => useWorkspaceState().prompt;
 
 export default WorkspaceStateProvider;

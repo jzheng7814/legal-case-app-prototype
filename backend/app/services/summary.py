@@ -44,6 +44,29 @@ STYLE_ONE_SHOT = textwrap.dedent(
     """
 )
 
+DEFAULT_SUMMARY_PROMPT = (
+    "You are drafting a precise legal case summary for an attorney.\n"
+    "Use the evidence below in the order presented (document order, then position within document) and maintain"
+    " a clear sense of the case state as it evolves.\n\n"
+    "Evidence (chronological):\n"
+    "{evidence_block}\n\n"
+    "Instructions:\n"
+    "Produce a clear, formal case narrative written for an educated general audience. "
+    "Keep the tone professional but avoid legalese and unnecessary jargon. "
+    "Follow the chronological flow of the evidence. "
+    "Write in straightforward, objective prose at approximately the reading level of a university student. "
+    "Do not use headers, numbered sections, bullet points, lists, or first/second person. "
+    "Do not add a concluding paragraph to the end which runs through all of the events from the start. Narrate the case strictly from beginning to end. "
+    "Finish with one concise line describing the current state of the case (e.g. This case is <closed/ongoing/etc>.)\n\n"
+    "Style example (cadence only; do not treat this as evidence):\n"
+    f"{STYLE_ONE_SHOT.strip()}\n"
+    "Use only the provided evidence above for facts; do not borrow facts, dates, parties, or claims from the style example.\n"
+)
+
+
+def get_default_summary_prompt() -> str:
+    return DEFAULT_SUMMARY_PROMPT
+
 
 async def create_summary_job(case_id: str, request: SummaryRequest, background_tasks: BackgroundTasks) -> SummaryJob:
     job_id = str(uuid.uuid4())
@@ -64,30 +87,8 @@ async def _run_summary_job(job_id: str, case_id: str, request: SummaryRequest) -
         ordered_items = _order_evidence_items(evidence, doc_titles)
         evidence_block = _format_evidence_block(ordered_items, doc_titles)
 
-        instruction_block = request.instructions or (
-            "Produce a clear, formal case narrative written for an educated general audience. "
-            "Keep the tone professional but avoid legalese and unnecessary jargon. "
-            "Follow the chronological flow of the evidence. "
-            "Write in straightforward, objective prose at approximately the reading level of a university student. "
-            "Do not use headers, numbered sections, bullet points, lists, or first/second person. "
-            "Do not add a concluding paragraph to the end which runs through all of the events from the start. Narrate the case strictly from beginning to end. "
-            "Finish with one concise line describing the current state of the case (e.g. This case is <closed/ongoing/etc>.)"
-        )
-
-        style_guidance = (
-            "Style example (cadence only; do not treat this as evidence):\n"
-            f"{STYLE_ONE_SHOT.strip()}\n"
-            "Use only the provided evidence above for facts; do not borrow facts, dates, parties, or claims from the style example."
-        )
-
-        prompt = (
-            "You are drafting a precise legal case summary for an attorney.\n"
-            "Use the evidence below in the order presented (document order, then position within document) and maintain"
-            " a clear sense of the case state as it evolves.\n\n"
-            f"Evidence (chronological):\n{evidence_block}\n\n"
-            f"Instructions:\n{instruction_block}\n\n"
-            f"{style_guidance}\n"
-        )
+        prompt_template = request.prompt if request.prompt is not None else DEFAULT_SUMMARY_PROMPT
+        prompt = prompt_template.replace("{evidence_block}", evidence_block)
 
         summary_text = await llm_service.generate_text(prompt)
         await _update_job(job_id, status=SummaryJobStatus.succeeded, summary_text=summary_text.strip())

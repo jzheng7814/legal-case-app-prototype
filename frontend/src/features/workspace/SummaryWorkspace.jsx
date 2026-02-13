@@ -6,6 +6,7 @@ import SummaryPanel from './components/SummaryPanel';
 import DocumentsPanel from './DocumentsPanel';
 import ChatPanel from './ChatPanel';
 import DividerHandle from './components/DividerHandle';
+import PromptEditor from './components/PromptEditor';
 import ThemeToggle from '../../theme/ThemeToggle';
 import { useDocuments, useHighlight } from './state/WorkspaceProvider';
 
@@ -27,6 +28,7 @@ const SummaryWorkspaceView = ({ onExit }) => {
     });
     const [threeSplit, setThreeSplit] = useState({ first: 30, second: 65 });
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isPromptEditorOpen, setIsPromptEditorOpen] = useState(false);
     const workspaceRef = useRef(null);
     const fatalErrorRef = useRef(false);
     const dragCleanupRef = useRef(null);
@@ -194,12 +196,22 @@ const SummaryWorkspaceView = ({ onExit }) => {
         );
     };
 
+    if (isPromptEditorOpen) {
+        return (
+            <PromptEditor
+                onBack={() => {
+                    setIsPromptEditorOpen(false);
+                }}
+            />
+        );
+    }
+
     return (
         <div className="min-h-screen bg-[var(--color-surface-app)] text-[var(--color-text-primary)] transition-colors">
             <div className="bg-[var(--color-surface-panel)] border-b border-[var(--color-border)] px-6 py-4 shadow-sm">
                 <div className="flex items-center justify-between flex-wrap gap-4">
                     <div>
-                        <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">Case Workspace</h1>
+                        <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">Gavel-Tool: Case Workspace</h1>
                         <p className="text-sm text-[var(--color-text-muted)]">Toggle the views you need; checklist drives summary generation.</p>
                     </div>
                     <div className="flex items-center gap-3 flex-wrap">
@@ -222,6 +234,16 @@ const SummaryWorkspaceView = ({ onExit }) => {
                                 ))}
                             </div>
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsChatOpen(false);
+                                setIsPromptEditorOpen(true);
+                            }}
+                            className="px-3 py-1.5 text-sm font-medium rounded border border-[var(--color-border)] bg-[var(--color-surface-panel-alt)] text-[var(--color-text-primary)] hover:border-[var(--color-border-strong)]"
+                        >
+                            Edit Prompt
+                        </button>
                         <button
                             type="button"
                             onClick={() => setIsChatOpen(true)}

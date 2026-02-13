@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Edit3, Sparkles, Plus } from 'lucide-react';
-import { useSummary, useHighlight, useDocuments, useChecklist } from '../state/WorkspaceProvider';
+import { useSummary, useHighlight, useDocuments, useChecklist, usePrompt } from '../state/WorkspaceProvider';
 import SummaryPatchPanel from './SummaryPatchPanel';
 import { createRangeFromOffsets, computeOverlayRects, scrollRangeIntoView } from '../../../utils/selection';
 
@@ -33,6 +33,7 @@ const SummaryPanel = () => {
         selectedDocumentText
     } = useHighlight();
     const { categories } = useChecklist();
+    const { prompt, hasCustomPrompt } = usePrompt();
     const [localError, setLocalError] = useState(null);
     const [patchOverlayRects, setPatchOverlayRects] = useState([]);
     const [patchOverlayMeta, setPatchOverlayMeta] = useState(null);
@@ -48,12 +49,13 @@ const SummaryPanel = () => {
             await generateAISummary({
                 caseId: activeCaseId,
                 documents: contextDocuments,
-                checklist: { categories }
+                checklist: { categories },
+                ...(hasCustomPrompt ? { prompt } : {})
             });
         } catch (error) {
             setLocalError(error.message || 'Failed to generate summary.');
         }
-    }, [activeCaseId, contextDocuments, generateAISummary, categories]);
+    }, [activeCaseId, contextDocuments, generateAISummary, categories, hasCustomPrompt, prompt]);
 
     useEffect(() => {
         if (isEditMode || (patchAction && patchAction.isStale)) {

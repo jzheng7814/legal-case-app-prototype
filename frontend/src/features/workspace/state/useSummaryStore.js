@@ -396,7 +396,7 @@ const useSummaryStore = ({ caseId } = {}) => {
     }, []);
 
     const generateAISummary = useCallback(async (
-        { caseId: overrideCaseId, documents = [], instructions, checklist } = {}
+        { caseId: overrideCaseId, documents = [], instructions, checklist, prompt } = {}
     ) => {
         if (!documents.length) {
             throw new Error('At least one document is required to generate a summary.');
@@ -413,7 +413,8 @@ const useSummaryStore = ({ caseId } = {}) => {
             const requestBody = {
                 documents: buildDocumentPayload(documents),
                 checklist,
-                ...(instructions ? { instructions } : {})
+                ...(instructions ? { instructions } : {}),
+                ...(prompt !== undefined ? { prompt } : {})
             };
             const { job } = await startSummaryJob(targetCaseId, requestBody);
             setSummaryJobId(job.id);

@@ -19,6 +19,9 @@ class SummaryJobStatus(str, Enum):
 class SummaryRequest(BaseModel):
     documents: List[DocumentReference] = Field(..., description="Documents that should inform the summary")
     checklist: EvidenceCategoryCollection = Field(..., description="Checklist items supplied by the client")
+    prompt: Optional[str] = Field(
+        None, description="Optional full prompt template supplied by the client; should include {evidence_block}"
+    )
     instructions: Optional[str] = Field(
         None, description="Optional user guidance the LLM should follow when drafting the summary"
     )
@@ -64,4 +67,9 @@ class SummaryJob(BaseModel):
 
 class SummaryJobEnvelope(BaseModel):
     job: SummaryJob
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class SummaryPromptResponse(BaseModel):
+    prompt: str
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
